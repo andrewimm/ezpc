@@ -81,4 +81,29 @@ impl Operand {
     pub fn imm16(value: u16) -> Self {
         Self::new(OperandType::Imm16, value)
     }
+
+    /// Create a memory operand (8-bit)
+    pub fn mem8(base_index: u8) -> Self {
+        Self::new(OperandType::Mem8, base_index as u16)
+    }
+
+    /// Create a memory operand (16-bit)
+    pub fn mem16(base_index: u8) -> Self {
+        Self::new(OperandType::Mem16, base_index as u16)
+    }
+
+    /// Create a relative jump operand (8-bit)
+    pub fn rel8(offset: i8) -> Self {
+        Self::new(OperandType::Rel8, offset as i16 as u16)
+    }
+
+    /// Create a relative jump operand (16-bit)
+    pub fn rel16(offset: i16) -> Self {
+        Self::new(OperandType::Rel16, offset as u16)
+    }
+
+    /// Create a segment register operand
+    pub fn seg(seg: u8) -> Self {
+        Self::new(OperandType::SegReg, seg as u16)
+    }
 }

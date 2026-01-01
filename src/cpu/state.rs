@@ -330,4 +330,108 @@ impl Cpu {
         }
         self.last_op = FlagOp::None;
     }
+
+    // === Instruction Decoding Methods ===
+
+    /// Fetch a byte from CS:IP and advance IP
+    #[inline(always)]
+    pub fn fetch_u8(&mut self, mem: &MemoryBus) -> u8 {
+        let byte = self.read_mem8(mem, self.segments[1], self.ip);
+        self.ip = self.ip.wrapping_add(1);
+        byte
+    }
+
+    /// Fetch a word from CS:IP and advance IP (little-endian)
+    #[inline(always)]
+    pub fn fetch_u16(&mut self, mem: &MemoryBus) -> u16 {
+        let low = self.fetch_u8(mem) as u16;
+        let high = self.fetch_u8(mem) as u16;
+        (high << 8) | low
+    }
+
+    /// Fetch a signed byte from CS:IP and advance IP
+    #[inline(always)]
+    pub fn fetch_i8(&mut self, mem: &MemoryBus) -> i8 {
+        self.fetch_u8(mem) as i8
+    }
+
+    /// Fetch a signed word from CS:IP and advance IP (little-endian)
+    #[inline(always)]
+    pub fn fetch_i16(&mut self, mem: &MemoryBus) -> i16 {
+        self.fetch_u16(mem) as i16
+    }
+
+    /// Decode a ModR/M byte from CS:IP
+    /// Returns the decoded ModR/M with any displacement/address loaded
+    pub fn decode_modrm(&mut self, mem: &MemoryBus) -> crate::cpu::decode::ModRM {
+        use crate::cpu::decode::{AddressingMode, ModRM};
+
+        let modrm_byte = self.fetch_u8(mem);
+        let mut modrm = ModRM::decode(modrm_byte);
+
+        // Read displacement or address if needed
+        modrm = match modrm.mode {
+            AddressingMode::MemoryDisp8 { .. } => {
+                let disp = self.fetch_i8(mem);
+                modrm.with_disp8(disp)
+            }
+            AddressingMode::MemoryDisp16 { .. } => {
+                let disp = self.fetch_i16(mem);
+                modrm.with_disp16(disp)
+            }
+            AddressingMode::DirectAddress { .. } => {
+                let addr = self.fetch_u16(mem);
+                modrm.with_direct_addr(addr)
+            }
+            _ => modrm,
+        };
+
+        modrm
+    }
+
+    /// Decode a register operand from a ModR/M reg field
+    #[inline(always)]
+    pub fn decode_reg_operand(reg: u8, is_byte: bool) -> crate::cpu::decode::Operand {
+        use crate::cpu::decode::Operand;
+        if is_byte {
+            Operand::reg8(reg)
+        } else {
+            Operand::reg16(reg)
+        }
+    }
+
+    /// Decode a register/memory operand from a ModR/M r/m field
+    pub fn decode_rm_operand(
+        modrm: &crate::cpu::decode::ModRM,
+        is_byte: bool,
+    ) -> crate::cpu::decode::Operand {
+        use crate::cpu::decode::{AddressingMode, Operand};
+
+        match modrm.mode {
+            AddressingMode::RegisterDirect { rm_reg } => {
+                if is_byte {
+                    Operand::reg8(rm_reg)
+                } else {
+                    Operand::reg16(rm_reg)
+                }
+            }
+            AddressingMode::MemoryIndirect { base_index }
+            | AddressingMode::MemoryDisp8 { base_index, .. }
+            | AddressingMode::MemoryDisp16 { base_index, .. } => {
+                if is_byte {
+                    Operand::mem8(base_index)
+                } else {
+                    Operand::mem16(base_index)
+                }
+            }
+            AddressingMode::DirectAddress { addr } => {
+                use crate::cpu::decode::OperandType;
+                if is_byte {
+                    Operand::new(OperandType::Mem8, addr)
+                } else {
+                    Operand::new(OperandType::Mem16, addr)
+                }
+            }
+        }
+    }
 }
