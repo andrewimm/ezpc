@@ -6,6 +6,7 @@
 //! - Tier 3: Compiled basic blocks (hot path)
 
 pub mod decode;
+pub mod execute;
 pub mod state;
 
 pub use state::Cpu;
