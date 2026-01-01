@@ -1,7 +1,7 @@
 //! Tests for instruction decoding (ModR/M and operand decoding)
 
-use ezpc::cpu::decode::{AddressingMode, ModRM, Operand, OperandType};
 use ezpc::cpu::Cpu;
+use ezpc::cpu::decode::{AddressingMode, ModRM, Operand, OperandType};
 use ezpc::memory::MemoryBus;
 
 #[test]

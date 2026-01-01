@@ -36,6 +36,8 @@ pub struct Operand {
     pub value: u16,
     /// For memory operands: segment override (or 0xFF for default)
     pub segment: u8,
+    /// For memory operands: displacement value (sign-extended to i16)
+    pub disp: i16,
 }
 
 impl Operand {
@@ -45,6 +47,7 @@ impl Operand {
             op_type,
             value,
             segment: 0xFF, // Default: no segment override
+            disp: 0,
         }
     }
 
@@ -54,7 +57,14 @@ impl Operand {
             op_type,
             value,
             segment,
+            disp: 0,
         }
+    }
+
+    /// Set the displacement for a memory operand
+    pub fn with_disp(mut self, disp: i16) -> Self {
+        self.disp = disp;
+        self
     }
 
     /// Create a "none" operand
@@ -87,9 +97,19 @@ impl Operand {
         Self::new(OperandType::Mem8, base_index as u16)
     }
 
+    /// Create a memory operand (8-bit) with displacement
+    pub fn mem8_disp(base_index: u8, disp: i16) -> Self {
+        Self::new(OperandType::Mem8, base_index as u16).with_disp(disp)
+    }
+
     /// Create a memory operand (16-bit)
     pub fn mem16(base_index: u8) -> Self {
         Self::new(OperandType::Mem16, base_index as u16)
+    }
+
+    /// Create a memory operand (16-bit) with displacement
+    pub fn mem16_disp(base_index: u8, disp: i16) -> Self {
+        Self::new(OperandType::Mem16, base_index as u16).with_disp(disp)
     }
 
     /// Create a relative jump operand (8-bit)

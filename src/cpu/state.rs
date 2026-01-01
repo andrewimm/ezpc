@@ -415,13 +415,25 @@ impl Cpu {
                     Operand::reg16(rm_reg)
                 }
             }
-            AddressingMode::MemoryIndirect { base_index }
-            | AddressingMode::MemoryDisp8 { base_index, .. }
-            | AddressingMode::MemoryDisp16 { base_index, .. } => {
+            AddressingMode::MemoryIndirect { base_index } => {
                 if is_byte {
                     Operand::mem8(base_index)
                 } else {
                     Operand::mem16(base_index)
+                }
+            }
+            AddressingMode::MemoryDisp8 { base_index, disp } => {
+                if is_byte {
+                    Operand::mem8_disp(base_index, disp as i16)
+                } else {
+                    Operand::mem16_disp(base_index, disp as i16)
+                }
+            }
+            AddressingMode::MemoryDisp16 { base_index, disp } => {
+                if is_byte {
+                    Operand::mem8_disp(base_index, disp)
+                } else {
+                    Operand::mem16_disp(base_index, disp)
                 }
             }
             AddressingMode::DirectAddress { addr } => {
@@ -432,6 +444,169 @@ impl Cpu {
                     Operand::new(OperandType::Mem16, addr)
                 }
             }
+        }
+    }
+
+    // === Operand Read/Write Methods ===
+
+    /// Read the value of an operand
+    /// This is used by instruction handlers to get operand values
+    #[inline(always)]
+    pub fn read_operand(&self, mem: &MemoryBus, operand: &crate::cpu::decode::Operand) -> u16 {
+        use crate::cpu::decode::OperandType;
+
+        match operand.op_type {
+            OperandType::None => 0,
+            OperandType::Reg8 => self.read_reg8(operand.value as u8) as u16,
+            OperandType::Reg16 => self.read_reg16(operand.value as u8),
+            OperandType::SegReg => self.read_seg(operand.value as u8),
+            OperandType::Imm8 | OperandType::Imm16 => operand.value,
+            OperandType::Mem8 | OperandType::Mem16 => {
+                // For memory operands, value contains base_index encoding
+                // We need to calculate the effective address
+                let base_index = operand.value as u8;
+                let (seg_idx, offset) = self.calculate_ea_from_operand(operand, base_index);
+
+                // Use segment override if present, otherwise use default
+                let segment = if operand.segment != 0xFF {
+                    self.read_seg(operand.segment)
+                } else {
+                    self.segments[seg_idx as usize]
+                };
+
+                if operand.op_type == OperandType::Mem8 {
+                    self.read_mem8(mem, segment, offset) as u16
+                } else {
+                    self.read_mem16(mem, segment, offset)
+                }
+            }
+            OperandType::Direct => {
+                // Direct addressing: operand.value is the offset
+                let segment = if operand.segment != 0xFF {
+                    self.read_seg(operand.segment)
+                } else {
+                    self.segments[3] // DS default
+                };
+                self.read_mem16(mem, segment, operand.value)
+            }
+            OperandType::Rel8 | OperandType::Rel16 => operand.value,
+        }
+    }
+
+    /// Write a value to an operand
+    /// This is used by instruction handlers to write results
+    #[inline(always)]
+    pub fn write_operand(
+        &mut self,
+        mem: &mut MemoryBus,
+        operand: &crate::cpu::decode::Operand,
+        value: u16,
+    ) {
+        use crate::cpu::decode::OperandType;
+
+        match operand.op_type {
+            OperandType::None => { /* No destination */ }
+            OperandType::Reg8 => self.write_reg8(operand.value as u8, value as u8),
+            OperandType::Reg16 => self.write_reg16(operand.value as u8, value),
+            OperandType::SegReg => self.write_seg(operand.value as u8, value),
+            OperandType::Mem8 | OperandType::Mem16 => {
+                // For memory operands, value contains base_index encoding
+                let base_index = operand.value as u8;
+                let (seg_idx, offset) = self.calculate_ea_from_operand(operand, base_index);
+
+                // Use segment override if present, otherwise use default
+                let segment = if operand.segment != 0xFF {
+                    self.read_seg(operand.segment)
+                } else {
+                    self.segments[seg_idx as usize]
+                };
+
+                if operand.op_type == OperandType::Mem8 {
+                    self.write_mem8(mem, segment, offset, value as u8);
+                } else {
+                    self.write_mem16(mem, segment, offset, value);
+                }
+            }
+            OperandType::Direct => {
+                // Direct addressing: operand.value is the offset
+                let segment = if operand.segment != 0xFF {
+                    self.read_seg(operand.segment)
+                } else {
+                    self.segments[3] // DS default
+                };
+                self.write_mem16(mem, segment, operand.value, value);
+            }
+            OperandType::Imm8 | OperandType::Imm16 | OperandType::Rel8 | OperandType::Rel16 => {
+                panic!("Cannot write to immediate or relative operand")
+            }
+        }
+    }
+
+    /// Helper to calculate effective address from operand encoding
+    /// Returns (segment_index, effective_address)
+    fn calculate_ea_from_operand(
+        &self,
+        operand: &crate::cpu::decode::Operand,
+        base_index: u8,
+    ) -> (u8, u16) {
+        let disp = operand.disp as u16;
+
+        // Effective address calculation based on r/m field
+        // See Intel 8086 manual Table 2-2
+        match base_index {
+            0b000 => {
+                // [BX + SI + disp]
+                let ea = self
+                    .read_reg16(3)
+                    .wrapping_add(self.read_reg16(6))
+                    .wrapping_add(disp);
+                (3, ea) // DS default
+            }
+            0b001 => {
+                // [BX + DI + disp]
+                let ea = self
+                    .read_reg16(3)
+                    .wrapping_add(self.read_reg16(7))
+                    .wrapping_add(disp);
+                (3, ea) // DS default
+            }
+            0b010 => {
+                // [BP + SI + disp]
+                let ea = self
+                    .read_reg16(5)
+                    .wrapping_add(self.read_reg16(6))
+                    .wrapping_add(disp);
+                (2, ea) // SS default
+            }
+            0b011 => {
+                // [BP + DI + disp]
+                let ea = self
+                    .read_reg16(5)
+                    .wrapping_add(self.read_reg16(7))
+                    .wrapping_add(disp);
+                (2, ea) // SS default
+            }
+            0b100 => {
+                // [SI + disp]
+                let ea = self.read_reg16(6).wrapping_add(disp);
+                (3, ea) // DS default
+            }
+            0b101 => {
+                // [DI + disp]
+                let ea = self.read_reg16(7).wrapping_add(disp);
+                (3, ea) // DS default
+            }
+            0b110 => {
+                // [BP + disp]
+                let ea = self.read_reg16(5).wrapping_add(disp);
+                (2, ea) // SS default
+            }
+            0b111 => {
+                // [BX + disp]
+                let ea = self.read_reg16(3).wrapping_add(disp);
+                (3, ea) // DS default
+            }
+            _ => unreachable!(),
         }
     }
 }
