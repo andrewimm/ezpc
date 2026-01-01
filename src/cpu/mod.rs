@@ -8,5 +8,6 @@
 pub mod decode;
 pub mod execute;
 pub mod state;
+pub mod tier1;
 
 pub use state::Cpu;
