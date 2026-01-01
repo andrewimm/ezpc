@@ -6,7 +6,7 @@
 
 use crate::cpu::Cpu;
 use crate::cpu::decode::instruction::DecodedInstruction;
-use crate::cpu::decode::operands::{Operand, OperandType};
+use crate::cpu::decode::operands::Operand;
 use crate::memory::MemoryBus;
 
 impl Cpu {
@@ -183,9 +183,7 @@ impl Cpu {
     /// of the ModR/M byte + displacement
     fn decode_modrm_operands(&mut self, mem: &MemoryBus, is_byte: bool) -> (Operand, Operand, u8) {
         let modrm = self.fetch_u8(mem);
-        let mod_bits = (modrm >> 6) & 0x03;
         let reg = (modrm >> 3) & 0x07;
-        let rm = modrm & 0x07;
 
         let reg_operand = if is_byte {
             Operand::reg8(reg)
@@ -193,7 +191,7 @@ impl Cpu {
             Operand::reg16(reg)
         };
 
-        let (rm_operand, extra_len) = self.decode_rm_operand(mem, modrm, is_byte);
+        let (rm_operand, extra_len) = self.decode_rm_from_modrm_byte(mem, modrm, is_byte);
 
         // Total length is 1 (ModR/M byte) + displacement length
         (rm_operand, reg_operand, 1 + extra_len)
@@ -202,7 +200,12 @@ impl Cpu {
     /// Helper: Decode the r/m operand from ModR/M byte
     ///
     /// Returns (operand, displacement_length)
-    fn decode_rm_operand(&mut self, mem: &MemoryBus, modrm: u8, is_byte: bool) -> (Operand, u8) {
+    fn decode_rm_from_modrm_byte(
+        &mut self,
+        mem: &MemoryBus,
+        modrm: u8,
+        is_byte: bool,
+    ) -> (Operand, u8) {
         let mod_bits = (modrm >> 6) & 0x03;
         let rm = modrm & 0x07;
 
@@ -221,18 +224,19 @@ impl Cpu {
                 if rm == 0b110 {
                     // Direct addressing [disp16]
                     let disp = self.fetch_u16(mem);
+                    // Direct addressing: value field holds the direct address
                     let op = if is_byte {
-                        Operand::mem8_direct(disp)
+                        Operand::new(crate::cpu::decode::operands::OperandType::Mem8, disp)
                     } else {
-                        Operand::mem16_direct(disp)
+                        Operand::new(crate::cpu::decode::operands::OperandType::Mem16, disp)
                     };
                     (op, 2)
                 } else {
                     // Indirect addressing [reg]
                     let op = if is_byte {
-                        Operand::mem8(rm, 0)
+                        Operand::mem8(rm)
                     } else {
-                        Operand::mem16(rm, 0)
+                        Operand::mem16(rm)
                     };
                     (op, 0)
                 }
@@ -241,9 +245,9 @@ impl Cpu {
                 // Memory mode, 8-bit displacement
                 let disp = self.fetch_u8(mem) as i8 as i16;
                 let op = if is_byte {
-                    Operand::mem8(rm, disp)
+                    Operand::mem8_disp(rm, disp)
                 } else {
-                    Operand::mem16(rm, disp)
+                    Operand::mem16_disp(rm, disp)
                 };
                 (op, 1)
             }
@@ -251,31 +255,13 @@ impl Cpu {
                 // Memory mode, 16-bit displacement
                 let disp = self.fetch_u16(mem) as i16;
                 let op = if is_byte {
-                    Operand::mem8(rm, disp)
+                    Operand::mem8_disp(rm, disp)
                 } else {
-                    Operand::mem16(rm, disp)
+                    Operand::mem16_disp(rm, disp)
                 };
                 (op, 2)
             }
             _ => unreachable!(),
         }
-    }
-
-    /// Fetch a byte from memory at IP and increment IP
-    #[inline(always)]
-    fn fetch_u8(&mut self, mem: &MemoryBus) -> u8 {
-        let cs = self.read_seg(1);
-        let value = self.read_mem8(mem, cs, self.ip);
-        self.ip = self.ip.wrapping_add(1);
-        value
-    }
-
-    /// Fetch a word from memory at IP and increment IP by 2
-    #[inline(always)]
-    fn fetch_u16(&mut self, mem: &MemoryBus) -> u16 {
-        let cs = self.read_seg(1);
-        let value = self.read_mem16(mem, cs, self.ip);
-        self.ip = self.ip.wrapping_add(2);
-        value
     }
 }

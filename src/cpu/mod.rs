@@ -7,7 +7,9 @@
 
 pub mod decode;
 pub mod execute;
+pub mod harness;
 pub mod state;
 pub mod tier1;
 
+pub use harness::CpuHarness;
 pub use state::Cpu;

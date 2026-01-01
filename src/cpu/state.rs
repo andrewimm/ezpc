@@ -609,4 +609,30 @@ impl Cpu {
             _ => unreachable!(),
         }
     }
+
+    // === Execution Methods ===
+
+    /// Execute one instruction (tier 1 execution)
+    ///
+    /// Fetches the opcode at CS:IP, decodes the instruction using tier 1
+    /// decoding, and executes it. This is the cold path - no caching.
+    pub fn step(&mut self, mem: &mut MemoryBus) {
+        use crate::cpu::tier1::DISPATCH_TABLE;
+
+        // Fetch opcode
+        let cs = self.read_seg(1);
+        let opcode = self.read_mem8(mem, cs, self.ip);
+
+        // Advance IP past opcode
+        self.ip = self.ip.wrapping_add(1);
+
+        // Get handler from dispatch table
+        let handler = DISPATCH_TABLE[opcode as usize];
+
+        // Decode instruction using tier 1 decoder
+        let instr = self.decode_instruction_t1(mem, opcode, handler);
+
+        // Execute the instruction
+        instr.execute(self, mem);
+    }
 }
