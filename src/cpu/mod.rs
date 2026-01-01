@@ -5,6 +5,7 @@
 //! - Tier 2: Decode cache (warm path)
 //! - Tier 3: Compiled basic blocks (hot path)
 
+pub mod decode;
 pub mod state;
 
 pub use state::Cpu;
