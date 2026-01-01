@@ -1,0 +1,281 @@
+//! Tier 1 operand decoding
+//!
+//! Decodes operands on-the-fly during first execution (cold path)
+//! This module provides methods for decoding instruction operands directly
+//! from memory without caching.
+
+use crate::cpu::Cpu;
+use crate::cpu::decode::instruction::DecodedInstruction;
+use crate::cpu::decode::operands::{Operand, OperandType};
+use crate::memory::MemoryBus;
+
+impl Cpu {
+    /// Decode operands for a given opcode and create a DecodedInstruction
+    ///
+    /// This is called during tier 1 execution to decode operands on-the-fly.
+    /// The handler is already selected from the dispatch table.
+    pub fn decode_instruction_t1(
+        &mut self,
+        mem: &MemoryBus,
+        opcode: u8,
+        handler: fn(&mut Cpu, &mut MemoryBus, &DecodedInstruction),
+    ) -> DecodedInstruction {
+        let mut instr = DecodedInstruction::new(opcode, handler);
+
+        // Decode operands based on opcode
+        match opcode {
+            // NOP - no operands
+            0x90 => {
+                // No operands needed
+            }
+
+            // MOV r/m, r (0x88, 0x89)
+            0x88 | 0x89 => {
+                let is_byte = opcode == 0x88;
+                let (dst, src, len) = self.decode_modrm_operands(mem, is_byte);
+                instr = instr.with_dst(dst).with_src(src).with_length(1 + len);
+            }
+
+            // MOV r, r/m (0x8A, 0x8B)
+            0x8A | 0x8B => {
+                let is_byte = opcode == 0x8A;
+                let (src, dst, len) = self.decode_modrm_operands(mem, is_byte);
+                instr = instr.with_dst(dst).with_src(src).with_length(1 + len);
+            }
+
+            // XCHG r/m, r (0x86, 0x87)
+            0x86 | 0x87 => {
+                let is_byte = opcode == 0x86;
+                let (dst, src, len) = self.decode_modrm_operands(mem, is_byte);
+                instr = instr.with_dst(dst).with_src(src).with_length(1 + len);
+            }
+
+            // MOV r, imm (0xB0-0xBF)
+            0xB0..=0xBF => {
+                let is_byte = opcode < 0xB8;
+                let reg = opcode & 0x07;
+
+                if is_byte {
+                    let imm = self.fetch_u8(mem);
+                    instr = instr
+                        .with_dst(Operand::reg8(reg))
+                        .with_src(Operand::imm8(imm))
+                        .with_length(2);
+                } else {
+                    let imm = self.fetch_u16(mem);
+                    instr = instr
+                        .with_dst(Operand::reg16(reg))
+                        .with_src(Operand::imm16(imm))
+                        .with_length(3);
+                }
+            }
+
+            // MOV r/m, imm (0xC6, 0xC7)
+            0xC6 | 0xC7 => {
+                let is_byte = opcode == 0xC6;
+                let (dst, _, modrm_len) = self.decode_modrm_operands(mem, is_byte);
+
+                if is_byte {
+                    let imm = self.fetch_u8(mem);
+                    instr = instr
+                        .with_dst(dst)
+                        .with_src(Operand::imm8(imm))
+                        .with_length(1 + modrm_len + 1);
+                } else {
+                    let imm = self.fetch_u16(mem);
+                    instr = instr
+                        .with_dst(dst)
+                        .with_src(Operand::imm16(imm))
+                        .with_length(1 + modrm_len + 2);
+                }
+            }
+
+            // XCHG AX, r16 (0x91-0x97)
+            0x91..=0x97 => {
+                let reg = opcode & 0x07;
+                instr = instr.with_dst(Operand::reg16(reg)).with_length(1);
+            }
+
+            // PUSH r16 (0x50-0x57)
+            0x50..=0x57 => {
+                let reg = opcode & 0x07;
+                instr = instr.with_src(Operand::reg16(reg)).with_length(1);
+            }
+
+            // POP r16 (0x58-0x5F)
+            0x58..=0x5F => {
+                let reg = opcode & 0x07;
+                instr = instr.with_dst(Operand::reg16(reg)).with_length(1);
+            }
+
+            // INC r16 (0x40-0x47)
+            0x40..=0x47 => {
+                let reg = opcode & 0x07;
+                instr = instr.with_dst(Operand::reg16(reg)).with_length(1);
+            }
+
+            // DEC r16 (0x48-0x4F)
+            0x48..=0x4F => {
+                let reg = opcode & 0x07;
+                instr = instr.with_dst(Operand::reg16(reg)).with_length(1);
+            }
+
+            // ADD r/m, r (0x00, 0x01)
+            0x00 | 0x01 => {
+                let is_byte = opcode == 0x00;
+                let (dst, src, len) = self.decode_modrm_operands(mem, is_byte);
+                instr = instr.with_dst(dst).with_src(src).with_length(1 + len);
+            }
+
+            // ADD r, r/m (0x02, 0x03)
+            0x02 | 0x03 => {
+                let is_byte = opcode == 0x02;
+                let (src, dst, len) = self.decode_modrm_operands(mem, is_byte);
+                instr = instr.with_dst(dst).with_src(src).with_length(1 + len);
+            }
+
+            // ADD AL/AX, imm (0x04, 0x05)
+            0x04 => {
+                let imm = self.fetch_u8(mem);
+                instr = instr
+                    .with_dst(Operand::reg8(0)) // AL
+                    .with_src(Operand::imm8(imm))
+                    .with_length(2);
+            }
+            0x05 => {
+                let imm = self.fetch_u16(mem);
+                instr = instr
+                    .with_dst(Operand::reg16(0)) // AX
+                    .with_src(Operand::imm16(imm))
+                    .with_length(3);
+            }
+
+            // JMP short (0xEB)
+            0xEB => {
+                let rel8 = self.fetch_u8(mem) as i8 as i16 as u16;
+                instr = instr.with_src(Operand::imm16(rel8)).with_length(2);
+            }
+
+            // JMP near (0xE9)
+            0xE9 => {
+                let rel16 = self.fetch_u16(mem);
+                instr = instr.with_src(Operand::imm16(rel16)).with_length(3);
+            }
+
+            // Conditional jumps (0x72-0x75, 0x78-0x79)
+            0x72 | 0x73 | 0x74 | 0x75 | 0x78 | 0x79 => {
+                let rel8 = self.fetch_u8(mem) as i8 as i16 as u16;
+                instr = instr.with_src(Operand::imm16(rel8)).with_length(2);
+            }
+
+            // Default case for unimplemented/invalid opcodes
+            _ => {
+                // No operands, length is just 1
+            }
+        }
+
+        instr
+    }
+
+    /// Helper: Decode ModR/M byte and return (dst, src, length)
+    ///
+    /// Returns the two operands decoded from ModR/M and the total length
+    /// of the ModR/M byte + displacement
+    fn decode_modrm_operands(&mut self, mem: &MemoryBus, is_byte: bool) -> (Operand, Operand, u8) {
+        let modrm = self.fetch_u8(mem);
+        let mod_bits = (modrm >> 6) & 0x03;
+        let reg = (modrm >> 3) & 0x07;
+        let rm = modrm & 0x07;
+
+        let reg_operand = if is_byte {
+            Operand::reg8(reg)
+        } else {
+            Operand::reg16(reg)
+        };
+
+        let (rm_operand, extra_len) = self.decode_rm_operand(mem, modrm, is_byte);
+
+        // Total length is 1 (ModR/M byte) + displacement length
+        (rm_operand, reg_operand, 1 + extra_len)
+    }
+
+    /// Helper: Decode the r/m operand from ModR/M byte
+    ///
+    /// Returns (operand, displacement_length)
+    fn decode_rm_operand(&mut self, mem: &MemoryBus, modrm: u8, is_byte: bool) -> (Operand, u8) {
+        let mod_bits = (modrm >> 6) & 0x03;
+        let rm = modrm & 0x07;
+
+        match mod_bits {
+            0b11 => {
+                // Register mode
+                let op = if is_byte {
+                    Operand::reg8(rm)
+                } else {
+                    Operand::reg16(rm)
+                };
+                (op, 0)
+            }
+            0b00 => {
+                // Memory mode, no displacement (except rm=110)
+                if rm == 0b110 {
+                    // Direct addressing [disp16]
+                    let disp = self.fetch_u16(mem);
+                    let op = if is_byte {
+                        Operand::mem8_direct(disp)
+                    } else {
+                        Operand::mem16_direct(disp)
+                    };
+                    (op, 2)
+                } else {
+                    // Indirect addressing [reg]
+                    let op = if is_byte {
+                        Operand::mem8(rm, 0)
+                    } else {
+                        Operand::mem16(rm, 0)
+                    };
+                    (op, 0)
+                }
+            }
+            0b01 => {
+                // Memory mode, 8-bit displacement
+                let disp = self.fetch_u8(mem) as i8 as i16;
+                let op = if is_byte {
+                    Operand::mem8(rm, disp)
+                } else {
+                    Operand::mem16(rm, disp)
+                };
+                (op, 1)
+            }
+            0b10 => {
+                // Memory mode, 16-bit displacement
+                let disp = self.fetch_u16(mem) as i16;
+                let op = if is_byte {
+                    Operand::mem8(rm, disp)
+                } else {
+                    Operand::mem16(rm, disp)
+                };
+                (op, 2)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    /// Fetch a byte from memory at IP and increment IP
+    #[inline(always)]
+    fn fetch_u8(&mut self, mem: &MemoryBus) -> u8 {
+        let cs = self.read_seg(1);
+        let value = self.read_mem8(mem, cs, self.ip);
+        self.ip = self.ip.wrapping_add(1);
+        value
+    }
+
+    /// Fetch a word from memory at IP and increment IP by 2
+    #[inline(always)]
+    fn fetch_u16(&mut self, mem: &MemoryBus) -> u16 {
+        let cs = self.read_seg(1);
+        let value = self.read_mem16(mem, cs, self.ip);
+        self.ip = self.ip.wrapping_add(2);
+        value
+    }
+}
