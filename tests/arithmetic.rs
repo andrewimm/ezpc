@@ -527,3 +527,192 @@ fn test_adc_chain_operation() {
     assert_eq!(harness.cpu.regs[3], 0x0002); // BX (high word)
     assert_eq!(harness.cpu.regs[0], 0x0001); // AX (low word)
 }
+
+// SBB tests
+
+#[test]
+fn test_sbb_r8_r8_no_borrow() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x10; MOV BL, 0x05; SBB AL, BL
+    harness.load_program(&[0xB0, 0x10, 0xB3, 0x05, 0x1A, 0xC3], 0);
+
+    harness.step(); // MOV AL, 0x10
+    harness.step(); // MOV BL, 0x05
+    harness.step(); // SBB AL, BL (AL = 0x10 - 0x05 - 0 = 0x0B)
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x0B); // AL
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false); // No borrow
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF), false);
+}
+
+#[test]
+fn test_sbb_r8_r8_with_borrow() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x00; SUB AL, 0x01; MOV BL, 0x05; SBB BL, AL
+    harness.load_program(&[0xB0, 0x00, 0x2C, 0x01, 0xB3, 0x05, 0x18, 0xC3], 0);
+
+    harness.step(); // MOV AL, 0x00
+    harness.step(); // SUB AL, 0x01 (AL = 0xFF, CF = 1)
+
+    // Verify borrow is set
+    assert_eq!(harness.cpu.read_reg8(0), 0xFF); // AL
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), true);
+
+    harness.step(); // MOV BL, 0x05
+    harness.step(); // SBB BL, AL (BL = 0x05 - 0xFF - 1 = 0x05)
+
+    assert_eq!(harness.cpu.read_reg8(3), 0x05); // BL
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), true);
+}
+
+#[test]
+fn test_sbb_r16_r16_no_borrow() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0x5678; MOV BX, 0x1234; SBB AX, BX
+    harness.load_program(&[0xB8, 0x78, 0x56, 0xBB, 0x34, 0x12, 0x1B, 0xC3], 0);
+
+    harness.step(); // MOV AX, 0x5678
+    harness.step(); // MOV BX, 0x1234
+    harness.step(); // SBB AX, BX (0x1B 0xC3: ModR/M = 11 000 011 = reg AX, r/m BX)
+
+    assert_eq!(harness.cpu.regs[0], 0x4444); // AX = 0x5678 - 0x1234 - 0 = 0x4444
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false);
+}
+
+#[test]
+fn test_sbb_r16_r16_with_borrow() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0x0000; SUB AX, 0x0001; MOV BX, 0x1234; SBB BX, AX
+    harness.load_program(
+        &[
+            0xB8, 0x00, 0x00, 0x2D, 0x01, 0x00, 0xBB, 0x34, 0x12, 0x19, 0xC3,
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AX, 0x0000
+    harness.step(); // SUB AX, 0x0001 (AX = 0xFFFF, CF = 1)
+
+    assert_eq!(harness.cpu.regs[0], 0xFFFF); // AX
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), true);
+
+    harness.step(); // MOV BX, 0x1234
+    harness.step(); // SBB BX, AX (BX = 0x1234 - 0xFFFF - 1 = 0x1234)
+
+    assert_eq!(harness.cpu.regs[3], 0x1234); // BX
+}
+
+#[test]
+fn test_sbb_al_imm8_no_borrow() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x30; SBB AL, 0x10
+    harness.load_program(&[0xB0, 0x30, 0x1C, 0x10], 0);
+
+    harness.step(); // MOV AL, 0x30
+    harness.step(); // SBB AL, 0x10 (AL = 0x30 - 0x10 - 0 = 0x20)
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x20); // AL
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false);
+}
+
+#[test]
+fn test_sbb_al_imm8_with_borrow() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x00; SUB AL, 0x01; SBB AL, 0x05
+    harness.load_program(&[0xB0, 0x00, 0x2C, 0x01, 0x1C, 0x05], 0);
+
+    harness.step(); // MOV AL, 0x00
+    harness.step(); // SUB AL, 0x01 (AL = 0xFF, CF = 1)
+    harness.step(); // SBB AL, 0x05 (AL = 0xFF - 0x05 - 1 = 0xF9)
+
+    assert_eq!(harness.cpu.read_reg8(0), 0xF9); // AL
+}
+
+#[test]
+fn test_sbb_ax_imm16_no_borrow() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0x3000; SBB AX, 0x1000
+    harness.load_program(&[0xB8, 0x00, 0x30, 0x1D, 0x00, 0x10], 0);
+
+    harness.step(); // MOV AX, 0x3000
+    harness.step(); // SBB AX, 0x1000 (AX = 0x3000 - 0x1000 - 0 = 0x2000)
+
+    assert_eq!(harness.cpu.regs[0], 0x2000); // AX
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false);
+}
+
+#[test]
+fn test_sbb_ax_imm16_with_borrow() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0x0000; SUB AX, 0x0001; SBB AX, 0x1234
+    harness.load_program(&[0xB8, 0x00, 0x00, 0x2D, 0x01, 0x00, 0x1D, 0x34, 0x12], 0);
+
+    harness.step(); // MOV AX, 0x0000
+    harness.step(); // SUB AX, 0x0001 (AX = 0xFFFF, CF = 1)
+    harness.step(); // SBB AX, 0x1234 (AX = 0xFFFF - 0x1234 - 1 = 0xEDCA)
+
+    assert_eq!(harness.cpu.regs[0], 0xEDCA); // AX
+}
+
+#[test]
+fn test_sbb_produces_borrow() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x05; SBB AL, 0x10 (should produce borrow)
+    harness.load_program(&[0xB0, 0x05, 0x1C, 0x10], 0);
+
+    harness.step(); // MOV AL, 0x05
+    harness.step(); // SBB AL, 0x10 (AL = 0x05 - 0x10 - 0 = 0xF5, CF = 1)
+
+    assert_eq!(harness.cpu.read_reg8(0), 0xF5); // AL
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), true);
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF), false);
+}
+
+#[test]
+fn test_sbb_chain_operation() {
+    let mut harness = CpuHarness::new();
+    // Simulate multi-precision subtraction: (0x0002:0x0001) - (0x0000:0x0002) = (0x0001:0xFFFF)
+    // MOV AX, 0x0001; MOV BX, 0x0002; MOV CX, 0x0002; MOV DX, 0x0000
+    // SUB AX, CX; SBB BX, DX
+    harness.load_program(
+        &[
+            0xB8, 0x01, 0x00, // MOV AX, 0x0001
+            0xBB, 0x02, 0x00, // MOV BX, 0x0002
+            0xB9, 0x02, 0x00, // MOV CX, 0x0002
+            0xBA, 0x00, 0x00, // MOV DX, 0x0000
+            0x29, 0xC8, // SUB AX, CX
+            0x19, 0xD3, // SBB BX, DX
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AX, 0x0001
+    harness.step(); // MOV BX, 0x0002
+    harness.step(); // MOV CX, 0x0002
+    harness.step(); // MOV DX, 0x0000
+
+    harness.step(); // SUB AX, CX (AX = 0x0001 - 0x0002 = 0xFFFF, CF = 1)
+
+    assert_eq!(harness.cpu.regs[0], 0xFFFF); // AX (low word)
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), true);
+
+    harness.step(); // SBB BX, DX (BX = 0x0002 - 0x0000 - 1 = 0x0001)
+
+    assert_eq!(harness.cpu.regs[3], 0x0001); // BX (high word)
+    assert_eq!(harness.cpu.regs[0], 0xFFFF); // AX (low word)
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false);
+}
+
+#[test]
+fn test_sbb_zero_result() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x10; SBB AL, 0x10 (should produce zero with ZF set)
+    harness.load_program(&[0xB0, 0x10, 0x1C, 0x10], 0);
+
+    harness.step(); // MOV AL, 0x10
+    harness.step(); // SBB AL, 0x10 (AL = 0x10 - 0x10 - 0 = 0x00, ZF = 1)
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x00); // AL
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF), true);
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false);
+}

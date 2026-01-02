@@ -36,12 +36,12 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     arithmetic::adc_acc_imm, // 0x15: ADC AX, imm16
     stack::push_seg,         // 0x16: PUSH SS
     stack::pop_seg,          // 0x17: POP SS
-    invalid_opcode,          // 0x18: SBB r/m8, r8 (not implemented yet)
-    invalid_opcode,          // 0x19: SBB r/m16, r16 (not implemented yet)
-    invalid_opcode,          // 0x1A: SBB r8, r/m8 (not implemented yet)
-    invalid_opcode,          // 0x1B: SBB r16, r/m16 (not implemented yet)
-    invalid_opcode,          // 0x1C: SBB AL, imm8 (not implemented yet)
-    invalid_opcode,          // 0x1D: SBB AX, imm16 (not implemented yet)
+    arithmetic::sbb_rm_r,    // 0x18: SBB r/m8, r8
+    arithmetic::sbb_rm_r,    // 0x19: SBB r/m16, r16
+    arithmetic::sbb_r_rm,    // 0x1A: SBB r8, r/m8
+    arithmetic::sbb_r_rm,    // 0x1B: SBB r16, r/m16
+    arithmetic::sbb_acc_imm, // 0x1C: SBB AL, imm8
+    arithmetic::sbb_acc_imm, // 0x1D: SBB AX, imm16
     stack::push_seg,         // 0x1E: PUSH DS
     stack::pop_seg,          // 0x1F: POP DS
     // 0x20-0x2F: AND, SUB

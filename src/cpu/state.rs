@@ -58,6 +58,8 @@ pub enum FlagOp {
     Adc16,
     Sub8,
     Sub16,
+    Sbb8,
+    Sbb16,
     And8,
     And16,
     Or8,
@@ -234,6 +236,7 @@ impl Cpu {
             FlagOp::Add8
             | FlagOp::Adc8
             | FlagOp::Sub8
+            | FlagOp::Sbb8
             | FlagOp::Inc8
             | FlagOp::Dec8
             | FlagOp::And8
@@ -257,7 +260,10 @@ impl Cpu {
                 }
 
                 // Carry flag (bit 8 for 8-bit operations)
-                if matches!(self.last_op, FlagOp::Add8 | FlagOp::Adc8 | FlagOp::Sub8) {
+                if matches!(
+                    self.last_op,
+                    FlagOp::Add8 | FlagOp::Adc8 | FlagOp::Sub8 | FlagOp::Sbb8
+                ) {
                     if self.last_result & 0x100 != 0 {
                         flags |= Self::CF;
                     }
@@ -273,6 +279,7 @@ impl Cpu {
             FlagOp::Add16
             | FlagOp::Adc16
             | FlagOp::Sub16
+            | FlagOp::Sbb16
             | FlagOp::Inc16
             | FlagOp::Dec16
             | FlagOp::And16
@@ -296,7 +303,10 @@ impl Cpu {
                 }
 
                 // Carry flag (bit 16 for 16-bit operations)
-                if matches!(self.last_op, FlagOp::Add16 | FlagOp::Adc16 | FlagOp::Sub16) {
+                if matches!(
+                    self.last_op,
+                    FlagOp::Add16 | FlagOp::Adc16 | FlagOp::Sub16 | FlagOp::Sbb16
+                ) {
                     if self.last_result & 0x10000 != 0 {
                         flags |= Self::CF;
                     }
@@ -540,6 +550,53 @@ impl Cpu {
         // Auxiliary carry: carry from bit 3 to bit 4
         let aux_carry = ((op1 as u32) ^ (op2 as u32) ^ (carry as u32) ^ result) & 0x10;
         if aux_carry != 0 {
+            self.flags |= Self::AF;
+        } else {
+            self.flags &= !Self::AF;
+        }
+    }
+
+    /// Compute and set OF and AF flags for 8-bit SBB operation
+    /// SBB: op1 - op2 - borrow
+    /// OF: overflow flag
+    /// AF: auxiliary borrow from bit 4 to bit 3
+    #[inline(always)]
+    pub fn set_sbb8_of_af(&mut self, op1: u8, op2: u8, borrow: u8, result: u32) {
+        // Overflow: ((op1 ^ op2) & (op1 ^ result)) & 0x80
+        let overflow = ((op1 as u32 ^ op2 as u32) & (op1 as u32 ^ result)) & 0x80;
+        if overflow != 0 {
+            self.flags |= Self::OF;
+        } else {
+            self.flags &= !Self::OF;
+        }
+
+        // Auxiliary borrow: borrow from bit 4 to bit 3
+        // XOR all three operands (op1, op2, borrow) with result to detect bit 4 change
+        let aux_borrow = ((op1 as u32) ^ (op2 as u32) ^ (borrow as u32) ^ result) & 0x10;
+        if aux_borrow != 0 {
+            self.flags |= Self::AF;
+        } else {
+            self.flags &= !Self::AF;
+        }
+    }
+
+    /// Compute and set OF and AF flags for 16-bit SBB operation
+    /// SBB: op1 - op2 - borrow
+    /// OF: overflow flag
+    /// AF: auxiliary borrow from bit 4 to bit 3
+    #[inline(always)]
+    pub fn set_sbb16_of_af(&mut self, op1: u16, op2: u16, borrow: u16, result: u32) {
+        // Overflow: ((op1 ^ op2) & (op1 ^ result)) & 0x8000
+        let overflow = ((op1 as u32 ^ op2 as u32) & (op1 as u32 ^ result)) & 0x8000;
+        if overflow != 0 {
+            self.flags |= Self::OF;
+        } else {
+            self.flags &= !Self::OF;
+        }
+
+        // Auxiliary borrow: borrow from bit 4 to bit 3
+        let aux_borrow = ((op1 as u32) ^ (op2 as u32) ^ (borrow as u32) ^ result) & 0x10;
+        if aux_borrow != 0 {
             self.flags |= Self::AF;
         } else {
             self.flags &= !Self::AF;
