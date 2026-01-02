@@ -529,6 +529,118 @@ pub fn sbb_rm_imm(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction
     }
 }
 
+/// CMP r/m, r - Compare register with register/memory
+/// Handles both byte (0x38) and word (0x39) variants
+///
+/// Performs dst - src and sets flags without storing the result
+/// Flags affected: CF, PF, AF, ZF, SF, OF
+pub fn cmp_rm_r(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    let dst_value = cpu.read_operand(mem, &instr.dst);
+    let src_value = cpu.read_operand(mem, &instr.src);
+
+    let is_byte = instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
+
+    if is_byte {
+        let dst8 = dst_value as u8;
+        let src8 = src_value as u8;
+        let result = (dst8 as u32).wrapping_sub(src8 as u32);
+        // CMP does not write the result, only sets flags
+        cpu.set_sub8_of_af(dst8, src8, result);
+        cpu.set_lazy_flags(result, FlagOp::Sub8);
+    } else {
+        let dst16 = dst_value;
+        let src16 = src_value;
+        let result = (dst16 as u32).wrapping_sub(src16 as u32);
+        // CMP does not write the result, only sets flags
+        cpu.set_sub16_of_af(dst16, src16, result);
+        cpu.set_lazy_flags(result, FlagOp::Sub16);
+    }
+}
+
+/// CMP r, r/m - Compare register/memory with register
+/// Handles both byte (0x3A) and word (0x3B) variants
+///
+/// Performs dst - src and sets flags without storing the result
+/// Flags affected: CF, PF, AF, ZF, SF, OF
+pub fn cmp_r_rm(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    let dst_value = cpu.read_operand(mem, &instr.dst);
+    let src_value = cpu.read_operand(mem, &instr.src);
+
+    let is_byte = instr.dst.op_type == OperandType::Reg8;
+
+    if is_byte {
+        let dst8 = dst_value as u8;
+        let src8 = src_value as u8;
+        let result = (dst8 as u32).wrapping_sub(src8 as u32);
+        // CMP does not write the result, only sets flags
+        cpu.set_sub8_of_af(dst8, src8, result);
+        cpu.set_lazy_flags(result, FlagOp::Sub8);
+    } else {
+        let dst16 = dst_value;
+        let src16 = src_value;
+        let result = (dst16 as u32).wrapping_sub(src16 as u32);
+        // CMP does not write the result, only sets flags
+        cpu.set_sub16_of_af(dst16, src16, result);
+        cpu.set_lazy_flags(result, FlagOp::Sub16);
+    }
+}
+
+/// CMP AL/AX, imm - Compare immediate with AL or AX
+/// Handles byte (0x3C) and word (0x3D) variants
+///
+/// Performs AL/AX - imm and sets flags without storing the result
+/// Flags affected: CF, PF, AF, ZF, SF, OF
+pub fn cmp_acc_imm(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    let dst_value = cpu.read_operand(mem, &instr.dst);
+    let imm_value = cpu.read_operand(mem, &instr.src);
+
+    let is_byte = instr.dst.op_type == OperandType::Reg8;
+
+    if is_byte {
+        let dst8 = dst_value as u8;
+        let imm8 = imm_value as u8;
+        let result = (dst8 as u32).wrapping_sub(imm8 as u32);
+        // CMP does not write the result, only sets flags
+        cpu.set_sub8_of_af(dst8, imm8, result);
+        cpu.set_lazy_flags(result, FlagOp::Sub8);
+    } else {
+        let dst16 = dst_value;
+        let imm16 = imm_value;
+        let result = (dst16 as u32).wrapping_sub(imm16 as u32);
+        // CMP does not write the result, only sets flags
+        cpu.set_sub16_of_af(dst16, imm16, result);
+        cpu.set_lazy_flags(result, FlagOp::Sub16);
+    }
+}
+
+/// CMP r/m, imm - Compare immediate with register/memory
+/// Handles byte (0x80 /7, 0x82 /7) and word (0x81 /7, 0x83 /7) variants
+///
+/// Performs r/m - imm and sets flags without storing the result
+/// Flags affected: CF, PF, AF, ZF, SF, OF
+pub fn cmp_rm_imm(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    let dst_value = cpu.read_operand(mem, &instr.dst);
+    let imm_value = cpu.read_operand(mem, &instr.src);
+
+    let is_byte = instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
+
+    if is_byte {
+        let dst8 = dst_value as u8;
+        let imm8 = imm_value as u8;
+        let result = (dst8 as u32).wrapping_sub(imm8 as u32);
+        // CMP does not write the result, only sets flags
+        cpu.set_sub8_of_af(dst8, imm8, result);
+        cpu.set_lazy_flags(result, FlagOp::Sub8);
+    } else {
+        let dst16 = dst_value;
+        let imm16 = imm_value;
+        let result = (dst16 as u32).wrapping_sub(imm16 as u32);
+        // CMP does not write the result, only sets flags
+        cpu.set_sub16_of_af(dst16, imm16, result);
+        cpu.set_lazy_flags(result, FlagOp::Sub16);
+    }
+}
+
 /// Group handler for opcode 0x80 and 0x82 - Arithmetic r/m8, imm8
 /// Dispatches to ADD, OR, ADC, SBB, AND, SUB, XOR, or CMP based on reg field
 pub fn group_80(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
@@ -542,7 +654,7 @@ pub fn group_80(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) 
         4 => panic!("AND r/m8, imm8 not implemented yet"),
         5 => sub_rm_imm(cpu, mem, instr), // SUB r/m8, imm8
         6 => panic!("XOR r/m8, imm8 not implemented yet"),
-        7 => panic!("CMP r/m8, imm8 not implemented yet"),
+        7 => cmp_rm_imm(cpu, mem, instr), // CMP r/m8, imm8
         _ => unreachable!(),
     }
 }
@@ -560,7 +672,7 @@ pub fn group_81(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) 
         4 => panic!("AND r/m16, imm16 not implemented yet"),
         5 => sub_rm_imm(cpu, mem, instr), // SUB r/m16, imm16
         6 => panic!("XOR r/m16, imm16 not implemented yet"),
-        7 => panic!("CMP r/m16, imm16 not implemented yet"),
+        7 => cmp_rm_imm(cpu, mem, instr), // CMP r/m16, imm16
         _ => unreachable!(),
     }
 }
@@ -578,7 +690,7 @@ pub fn group_83(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) 
         4 => panic!("AND r/m16, imm8 not implemented yet"),
         5 => sub_rm_imm(cpu, mem, instr), // SUB r/m16, imm8 (sign-extended)
         6 => panic!("XOR r/m16, imm8 not implemented yet"),
-        7 => panic!("CMP r/m16, imm8 not implemented yet"),
+        7 => cmp_rm_imm(cpu, mem, instr), // CMP r/m16, imm8 (sign-extended)
         _ => unreachable!(),
     }
 }

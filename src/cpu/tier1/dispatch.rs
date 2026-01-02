@@ -62,22 +62,22 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     invalid_opcode,          // 0x2E: CS segment prefix (not implemented yet)
     invalid_opcode,          // 0x2F: DAS (not implemented yet)
     // 0x30-0x3F: XOR, CMP
-    logic::xor_rm_r,    // 0x30: XOR r/m8, r8
-    logic::xor_rm_r,    // 0x31: XOR r/m16, r16
-    logic::xor_r_rm,    // 0x32: XOR r8, r/m8
-    logic::xor_r_rm,    // 0x33: XOR r16, r/m16
-    logic::xor_acc_imm, // 0x34: XOR AL, imm8
-    logic::xor_acc_imm, // 0x35: XOR AX, imm16
-    invalid_opcode,     // 0x36: SS segment prefix (not implemented yet)
-    invalid_opcode,     // 0x37: AAA (not implemented yet)
-    invalid_opcode,     // 0x38: CMP r/m8, r8 (not implemented yet)
-    invalid_opcode,     // 0x39: CMP r/m16, r16 (not implemented yet)
-    invalid_opcode,     // 0x3A: CMP r8, r/m8 (not implemented yet)
-    invalid_opcode,     // 0x3B: CMP r16, r/m16 (not implemented yet)
-    invalid_opcode,     // 0x3C: CMP AL, imm8 (not implemented yet)
-    invalid_opcode,     // 0x3D: CMP AX, imm16 (not implemented yet)
-    invalid_opcode,     // 0x3E: DS segment prefix (not implemented yet)
-    invalid_opcode,     // 0x3F: AAS (not implemented yet)
+    logic::xor_rm_r,         // 0x30: XOR r/m8, r8
+    logic::xor_rm_r,         // 0x31: XOR r/m16, r16
+    logic::xor_r_rm,         // 0x32: XOR r8, r/m8
+    logic::xor_r_rm,         // 0x33: XOR r16, r/m16
+    logic::xor_acc_imm,      // 0x34: XOR AL, imm8
+    logic::xor_acc_imm,      // 0x35: XOR AX, imm16
+    invalid_opcode,          // 0x36: SS segment prefix (not implemented yet)
+    invalid_opcode,          // 0x37: AAA (not implemented yet)
+    arithmetic::cmp_rm_r,    // 0x38: CMP r/m8, r8
+    arithmetic::cmp_rm_r,    // 0x39: CMP r/m16, r16
+    arithmetic::cmp_r_rm,    // 0x3A: CMP r8, r/m8
+    arithmetic::cmp_r_rm,    // 0x3B: CMP r16, r/m16
+    arithmetic::cmp_acc_imm, // 0x3C: CMP AL, imm8
+    arithmetic::cmp_acc_imm, // 0x3D: CMP AX, imm16
+    invalid_opcode,          // 0x3E: DS segment prefix (not implemented yet)
+    invalid_opcode,          // 0x3F: AAS (not implemented yet)
     // 0x40-0x4F: INC and DEC 16-bit registers
     arithmetic::inc_r16, // 0x40: INC AX
     arithmetic::inc_r16, // 0x41: INC CX

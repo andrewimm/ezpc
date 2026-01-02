@@ -716,3 +716,211 @@ fn test_sbb_zero_result() {
     assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF), true);
     assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false);
 }
+
+// CMP tests
+
+#[test]
+fn test_cmp_r8_r8_equal() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x42; MOV BL, 0x42; CMP AL, BL
+    harness.load_program(&[0xB0, 0x42, 0xB3, 0x42, 0x3A, 0xC3], 0);
+
+    harness.step(); // MOV AL, 0x42
+    harness.step(); // MOV BL, 0x42
+    harness.step(); // CMP AL, BL (AL - BL = 0)
+
+    // Result should be zero (equal)
+    assert_eq!(harness.cpu.read_reg8(0), 0x42); // AL unchanged
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF), true); // Zero flag set
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false); // No borrow
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::SF), false); // Not negative
+}
+
+#[test]
+fn test_cmp_r8_r8_greater() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x50; MOV BL, 0x30; CMP AL, BL
+    harness.load_program(&[0xB0, 0x50, 0xB3, 0x30, 0x3A, 0xC3], 0);
+
+    harness.step(); // MOV AL, 0x50
+    harness.step(); // MOV BL, 0x30
+    harness.step(); // CMP AL, BL (AL - BL = 0x20, positive)
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x50); // AL unchanged
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF), false); // Not zero
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false); // No borrow
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::SF), false); // Positive
+}
+
+#[test]
+fn test_cmp_r8_r8_less() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x10; MOV BL, 0x20; CMP AL, BL
+    harness.load_program(&[0xB0, 0x10, 0xB3, 0x20, 0x3A, 0xC3], 0);
+
+    harness.step(); // MOV AL, 0x10
+    harness.step(); // MOV BL, 0x20
+    harness.step(); // CMP AL, BL (AL - BL would wrap)
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x10); // AL unchanged
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF), false); // Not zero
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), true); // Borrow occurred
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::SF), true); // Result negative
+}
+
+#[test]
+fn test_cmp_r16_r16_equal() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0x1234; MOV BX, 0x1234; CMP AX, BX
+    harness.load_program(&[0xB8, 0x34, 0x12, 0xBB, 0x34, 0x12, 0x3B, 0xC3], 0);
+
+    harness.step(); // MOV AX, 0x1234
+    harness.step(); // MOV BX, 0x1234
+    harness.step(); // CMP AX, BX
+
+    assert_eq!(harness.cpu.regs[0], 0x1234); // AX unchanged
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF), true);
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false);
+}
+
+#[test]
+fn test_cmp_r16_r16_greater() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0x5000; MOV BX, 0x3000; CMP AX, BX
+    harness.load_program(&[0xB8, 0x00, 0x50, 0xBB, 0x00, 0x30, 0x3B, 0xC3], 0);
+
+    harness.step(); // MOV AX, 0x5000
+    harness.step(); // MOV BX, 0x3000
+    harness.step(); // CMP AX, BX
+
+    assert_eq!(harness.cpu.regs[0], 0x5000); // AX unchanged
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF), false);
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false);
+}
+
+#[test]
+fn test_cmp_r16_r16_less() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0x1000; MOV BX, 0x2000; CMP AX, BX
+    harness.load_program(&[0xB8, 0x00, 0x10, 0xBB, 0x00, 0x20, 0x3B, 0xC3], 0);
+
+    harness.step(); // MOV AX, 0x1000
+    harness.step(); // MOV BX, 0x2000
+    harness.step(); // CMP AX, BX
+
+    assert_eq!(harness.cpu.regs[0], 0x1000); // AX unchanged
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF), false);
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), true);
+}
+
+#[test]
+fn test_cmp_al_imm8_equal() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x55; CMP AL, 0x55
+    harness.load_program(&[0xB0, 0x55, 0x3C, 0x55], 0);
+
+    harness.step(); // MOV AL, 0x55
+    harness.step(); // CMP AL, 0x55
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x55); // AL unchanged
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF), true);
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false);
+}
+
+#[test]
+fn test_cmp_al_imm8_not_equal() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x55; CMP AL, 0x33
+    harness.load_program(&[0xB0, 0x55, 0x3C, 0x33], 0);
+
+    harness.step(); // MOV AL, 0x55
+    harness.step(); // CMP AL, 0x33
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x55); // AL unchanged
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF), false);
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false);
+}
+
+#[test]
+fn test_cmp_ax_imm16_equal() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0xABCD; CMP AX, 0xABCD
+    harness.load_program(&[0xB8, 0xCD, 0xAB, 0x3D, 0xCD, 0xAB], 0);
+
+    harness.step(); // MOV AX, 0xABCD
+    harness.step(); // CMP AX, 0xABCD
+
+    assert_eq!(harness.cpu.regs[0], 0xABCD); // AX unchanged
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF), true);
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false);
+}
+
+#[test]
+fn test_cmp_ax_imm16_not_equal() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0xABCD; CMP AX, 0x1234
+    harness.load_program(&[0xB8, 0xCD, 0xAB, 0x3D, 0x34, 0x12], 0);
+
+    harness.step(); // MOV AX, 0xABCD
+    harness.step(); // CMP AX, 0x1234
+
+    assert_eq!(harness.cpu.regs[0], 0xABCD); // AX unchanged
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF), false);
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false);
+}
+
+#[test]
+fn test_cmp_does_not_modify_register() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x99; CMP AL, 0x11; verify AL is still 0x99
+    harness.load_program(&[0xB0, 0x99, 0x3C, 0x11], 0);
+
+    harness.step(); // MOV AL, 0x99
+    harness.step(); // CMP AL, 0x11
+
+    // Critical: CMP should NOT modify AL
+    assert_eq!(harness.cpu.read_reg8(0), 0x99); // AL unchanged!
+}
+
+#[test]
+fn test_cmp_with_conditional_jump() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x10; CMP AL, 0x20; JB skip; MOV AL, 0xFF; skip: NOP
+    harness.load_program(
+        &[
+            0xB0, 0x10, // MOV AL, 0x10
+            0x3C, 0x20, // CMP AL, 0x20
+            0x72, 0x02, // JB +2 (skip MOV)
+            0xB0, 0xFF, // MOV AL, 0xFF
+            0x90, // NOP
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 0x10
+    harness.step(); // CMP AL, 0x20 (sets CF because 0x10 < 0x20)
+
+    // CF should be set (0x10 < 0x20)
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), true);
+
+    harness.step(); // JB should jump (CF=1)
+    harness.step(); // NOP
+
+    // AL should still be 0x10 because we jumped over the MOV
+    assert_eq!(harness.cpu.read_reg8(0), 0x10);
+}
+
+#[test]
+fn test_cmp_zero_with_zero() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x00; CMP AL, 0x00
+    harness.load_program(&[0xB0, 0x00, 0x3C, 0x00], 0);
+
+    harness.step(); // MOV AL, 0x00
+    harness.step(); // CMP AL, 0x00
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x00);
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF), true);
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false);
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::SF), false);
+}
