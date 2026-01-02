@@ -54,6 +54,8 @@ pub enum FlagOp {
     None,
     Add8,
     Add16,
+    Adc8,
+    Adc16,
     Sub8,
     Sub16,
     And8,
@@ -230,6 +232,7 @@ impl Cpu {
             FlagOp::None => return self.flags,
 
             FlagOp::Add8
+            | FlagOp::Adc8
             | FlagOp::Sub8
             | FlagOp::Inc8
             | FlagOp::Dec8
@@ -254,7 +257,7 @@ impl Cpu {
                 }
 
                 // Carry flag (bit 8 for 8-bit operations)
-                if matches!(self.last_op, FlagOp::Add8 | FlagOp::Sub8) {
+                if matches!(self.last_op, FlagOp::Add8 | FlagOp::Adc8 | FlagOp::Sub8) {
                     if self.last_result & 0x100 != 0 {
                         flags |= Self::CF;
                     }
@@ -268,6 +271,7 @@ impl Cpu {
             }
 
             FlagOp::Add16
+            | FlagOp::Adc16
             | FlagOp::Sub16
             | FlagOp::Inc16
             | FlagOp::Dec16
@@ -292,7 +296,7 @@ impl Cpu {
                 }
 
                 // Carry flag (bit 16 for 16-bit operations)
-                if matches!(self.last_op, FlagOp::Add16 | FlagOp::Sub16) {
+                if matches!(self.last_op, FlagOp::Add16 | FlagOp::Adc16 | FlagOp::Sub16) {
                     if self.last_result & 0x10000 != 0 {
                         flags |= Self::CF;
                     }
@@ -491,6 +495,51 @@ impl Cpu {
         // Auxiliary borrow from bit 4 to bit 3
         let aux_borrow = ((op1 as u32) ^ 1 ^ (result as u32)) & 0x10;
         if aux_borrow != 0 {
+            self.flags |= Self::AF;
+        } else {
+            self.flags &= !Self::AF;
+        }
+    }
+
+    /// Compute and set OF and AF flags for 8-bit ADC operation
+    /// ADC uses same overflow/auxiliary carry computation as ADD
+    /// OF: overflow when two same-sign operands produce opposite-sign result
+    /// AF: auxiliary carry from bit 3 to bit 4
+    #[inline(always)]
+    pub fn set_adc8_of_af(&mut self, op1: u8, op2: u8, carry: u8, result: u32) {
+        // For overflow, we compute: ((op1 ^ result) & (op2 ^ result)) & 0x80
+        // This detects when adding two same-sign numbers produces opposite sign
+        let overflow = ((op1 as u32 ^ result) & (op2 as u32 ^ result)) & 0x80;
+        if overflow != 0 {
+            self.flags |= Self::OF;
+        } else {
+            self.flags &= !Self::OF;
+        }
+
+        // Auxiliary carry: carry from bit 3 to bit 4
+        // XOR all three operands (op1, op2, carry) with result to detect bit 4 change
+        let aux_carry = ((op1 as u32) ^ (op2 as u32) ^ (carry as u32) ^ result) & 0x10;
+        if aux_carry != 0 {
+            self.flags |= Self::AF;
+        } else {
+            self.flags &= !Self::AF;
+        }
+    }
+
+    /// Compute and set OF and AF flags for 16-bit ADC operation
+    #[inline(always)]
+    pub fn set_adc16_of_af(&mut self, op1: u16, op2: u16, carry: u16, result: u32) {
+        // Overflow: ((op1 ^ result) & (op2 ^ result)) & 0x8000
+        let overflow = ((op1 as u32 ^ result) & (op2 as u32 ^ result)) & 0x8000;
+        if overflow != 0 {
+            self.flags |= Self::OF;
+        } else {
+            self.flags &= !Self::OF;
+        }
+
+        // Auxiliary carry: carry from bit 3 to bit 4
+        let aux_carry = ((op1 as u32) ^ (op2 as u32) ^ (carry as u32) ^ result) & 0x10;
+        if aux_carry != 0 {
             self.flags |= Self::AF;
         } else {
             self.flags &= !Self::AF;

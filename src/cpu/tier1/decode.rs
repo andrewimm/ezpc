@@ -176,6 +176,36 @@ impl Cpu {
                     .with_length(3);
             }
 
+            // ADC r/m, r (0x10, 0x11)
+            0x10 | 0x11 => {
+                let is_byte = opcode == 0x10;
+                let (dst, src, len) = self.decode_modrm_operands(mem, is_byte);
+                instr = instr.with_dst(dst).with_src(src).with_length(1 + len);
+            }
+
+            // ADC r, r/m (0x12, 0x13)
+            0x12 | 0x13 => {
+                let is_byte = opcode == 0x12;
+                let (src, dst, len) = self.decode_modrm_operands(mem, is_byte);
+                instr = instr.with_dst(dst).with_src(src).with_length(1 + len);
+            }
+
+            // ADC AL/AX, imm (0x14, 0x15)
+            0x14 => {
+                let imm = self.fetch_u8(mem);
+                instr = instr
+                    .with_dst(Operand::reg8(0)) // AL
+                    .with_src(Operand::imm8(imm))
+                    .with_length(2);
+            }
+            0x15 => {
+                let imm = self.fetch_u16(mem);
+                instr = instr
+                    .with_dst(Operand::reg16(0)) // AX
+                    .with_src(Operand::imm16(imm))
+                    .with_length(3);
+            }
+
             // ADD AL/AX, imm (0x04, 0x05)
             0x04 => {
                 let imm = self.fetch_u8(mem);

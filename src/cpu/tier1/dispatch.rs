@@ -28,22 +28,22 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     stack::push_seg,         // 0x0E: PUSH CS
     invalid_opcode,          // 0x0F: (two-byte escape on 80186+, invalid on 8088)
     // 0x10-0x1F: ADC, SBB, and segment prefixes
-    invalid_opcode,  // 0x10: ADC r/m8, r8 (not implemented yet)
-    invalid_opcode,  // 0x11: ADC r/m16, r16 (not implemented yet)
-    invalid_opcode,  // 0x12: ADC r8, r/m8 (not implemented yet)
-    invalid_opcode,  // 0x13: ADC r16, r/m16 (not implemented yet)
-    invalid_opcode,  // 0x14: ADC AL, imm8 (not implemented yet)
-    invalid_opcode,  // 0x15: ADC AX, imm16 (not implemented yet)
-    stack::push_seg, // 0x16: PUSH SS
-    stack::pop_seg,  // 0x17: POP SS
-    invalid_opcode,  // 0x18: SBB r/m8, r8 (not implemented yet)
-    invalid_opcode,  // 0x19: SBB r/m16, r16 (not implemented yet)
-    invalid_opcode,  // 0x1A: SBB r8, r/m8 (not implemented yet)
-    invalid_opcode,  // 0x1B: SBB r16, r/m16 (not implemented yet)
-    invalid_opcode,  // 0x1C: SBB AL, imm8 (not implemented yet)
-    invalid_opcode,  // 0x1D: SBB AX, imm16 (not implemented yet)
-    stack::push_seg, // 0x1E: PUSH DS
-    stack::pop_seg,  // 0x1F: POP DS
+    arithmetic::adc_rm_r,    // 0x10: ADC r/m8, r8
+    arithmetic::adc_rm_r,    // 0x11: ADC r/m16, r16
+    arithmetic::adc_r_rm,    // 0x12: ADC r8, r/m8
+    arithmetic::adc_r_rm,    // 0x13: ADC r16, r/m16
+    arithmetic::adc_acc_imm, // 0x14: ADC AL, imm8
+    arithmetic::adc_acc_imm, // 0x15: ADC AX, imm16
+    stack::push_seg,         // 0x16: PUSH SS
+    stack::pop_seg,          // 0x17: POP SS
+    invalid_opcode,          // 0x18: SBB r/m8, r8 (not implemented yet)
+    invalid_opcode,          // 0x19: SBB r/m16, r16 (not implemented yet)
+    invalid_opcode,          // 0x1A: SBB r8, r/m8 (not implemented yet)
+    invalid_opcode,          // 0x1B: SBB r16, r/m16 (not implemented yet)
+    invalid_opcode,          // 0x1C: SBB AL, imm8 (not implemented yet)
+    invalid_opcode,          // 0x1D: SBB AX, imm16 (not implemented yet)
+    stack::push_seg,         // 0x1E: PUSH DS
+    stack::pop_seg,          // 0x1F: POP DS
     // 0x20-0x2F: AND, SUB
     logic::and_rm_r,         // 0x20: AND r/m8, r8
     logic::and_rm_r,         // 0x21: AND r/m16, r16

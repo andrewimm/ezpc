@@ -354,3 +354,176 @@ fn test_sub_rm16_imm8_negative_sign_extended() {
     assert_eq!(harness.cpu.regs[0], 0x0101); // AX = 0x0101
     assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // Borrow occurred
 }
+
+// === ADC (Add with Carry) Tests ===
+
+#[test]
+fn test_adc_r8_r8_no_carry() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x05; MOV BL, 0x03; ADC AL, BL
+    harness.load_program(&[0xB0, 0x05, 0xB3, 0x03, 0x12, 0xC3], 0);
+
+    harness.step(); // MOV AL, 0x05
+    harness.step(); // MOV BL, 0x03
+    harness.step(); // ADC AL, BL (AL = 0x05 + 0x03 + 0 = 0x08)
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x08); // AL
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false); // No carry
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF), false);
+}
+
+#[test]
+fn test_adc_r8_r8_with_carry() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0xFF; ADD AL, 0x01; MOV BL, 0x05; ADC BL, AL
+    harness.load_program(&[0xB0, 0xFF, 0x04, 0x01, 0xB3, 0x05, 0x10, 0xC3], 0);
+
+    harness.step(); // MOV AL, 0xFF
+    harness.step(); // ADD AL, 0x01 (AL = 0x00, CF = 1)
+
+    // Verify carry is set
+    assert_eq!(harness.cpu.read_reg8(0), 0x00); // AL
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), true);
+
+    harness.step(); // MOV BL, 0x05
+    harness.step(); // ADC BL, AL (BL = 0x05 + 0x00 + 1 = 0x06)
+
+    assert_eq!(harness.cpu.read_reg8(3), 0x06); // BL
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false);
+}
+
+#[test]
+fn test_adc_r16_r16_no_carry() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0x1234; MOV BX, 0x5678; ADC AX, BX
+    harness.load_program(&[0xB8, 0x34, 0x12, 0xBB, 0x78, 0x56, 0x13, 0xC3], 0);
+
+    harness.step(); // MOV AX, 0x1234
+    harness.step(); // MOV BX, 0x5678
+    harness.step(); // ADC AX, BX (0x13 0xC3: ModR/M = 11 000 011 = reg AX, r/m BX)
+
+    assert_eq!(harness.cpu.regs[0], 0x68AC); // AX = 0x1234 + 0x5678 + 0 = 0x68AC
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false);
+}
+
+#[test]
+fn test_adc_r16_r16_with_carry() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0xFFFF; ADD AX, 0x0001; MOV BX, 0x1234; ADC BX, AX
+    harness.load_program(
+        &[
+            0xB8, 0xFF, 0xFF, 0x05, 0x01, 0x00, 0xBB, 0x34, 0x12, 0x11, 0xC3,
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AX, 0xFFFF
+    harness.step(); // ADD AX, 0x0001 (AX = 0x0000, CF = 1)
+
+    assert_eq!(harness.cpu.regs[0], 0x0000); // AX
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), true);
+
+    harness.step(); // MOV BX, 0x1234
+    harness.step(); // ADC BX, AX (BX = 0x1234 + 0x0000 + 1 = 0x1235)
+
+    assert_eq!(harness.cpu.regs[3], 0x1235); // BX
+}
+
+#[test]
+fn test_adc_al_imm8_no_carry() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x10; ADC AL, 0x20
+    harness.load_program(&[0xB0, 0x10, 0x14, 0x20], 0);
+
+    harness.step(); // MOV AL, 0x10
+    harness.step(); // ADC AL, 0x20 (AL = 0x10 + 0x20 + 0 = 0x30)
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x30); // AL
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false);
+}
+
+#[test]
+fn test_adc_al_imm8_with_carry() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0xFF; ADD AL, 0x01; ADC AL, 0x05
+    harness.load_program(&[0xB0, 0xFF, 0x04, 0x01, 0x14, 0x05], 0);
+
+    harness.step(); // MOV AL, 0xFF
+    harness.step(); // ADD AL, 0x01 (AL = 0x00, CF = 1)
+    harness.step(); // ADC AL, 0x05 (AL = 0x00 + 0x05 + 1 = 0x06)
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x06); // AL
+}
+
+#[test]
+fn test_adc_ax_imm16_no_carry() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0x1000; ADC AX, 0x2000
+    harness.load_program(&[0xB8, 0x00, 0x10, 0x15, 0x00, 0x20], 0);
+
+    harness.step(); // MOV AX, 0x1000
+    harness.step(); // ADC AX, 0x2000 (AX = 0x1000 + 0x2000 + 0 = 0x3000)
+
+    assert_eq!(harness.cpu.regs[0], 0x3000); // AX
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false);
+}
+
+#[test]
+fn test_adc_ax_imm16_with_carry() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0xFFFF; ADD AX, 0x0001; ADC AX, 0x1234
+    harness.load_program(&[0xB8, 0xFF, 0xFF, 0x05, 0x01, 0x00, 0x15, 0x34, 0x12], 0);
+
+    harness.step(); // MOV AX, 0xFFFF
+    harness.step(); // ADD AX, 0x0001 (AX = 0x0000, CF = 1)
+    harness.step(); // ADC AX, 0x1234 (AX = 0x0000 + 0x1234 + 1 = 0x1235)
+
+    assert_eq!(harness.cpu.regs[0], 0x1235); // AX
+}
+
+#[test]
+fn test_adc_produces_carry() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x80; ADC AL, 0x80 (should produce carry)
+    harness.load_program(&[0xB0, 0x80, 0x14, 0x80], 0);
+
+    harness.step(); // MOV AL, 0x80
+    harness.step(); // ADC AL, 0x80 (AL = 0x80 + 0x80 + 0 = 0x00, CF = 1)
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x00); // AL
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), true);
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF), true);
+}
+
+#[test]
+fn test_adc_chain_operation() {
+    let mut harness = CpuHarness::new();
+    // Simulate multi-precision addition: (0x0001:0xFFFF) + (0x0000:0x0002) = (0x0002:0x0001)
+    // MOV AX, 0xFFFF; MOV BX, 0x0001; MOV CX, 0x0002; MOV DX, 0x0000
+    // ADD AX, CX; ADC BX, DX
+    harness.load_program(
+        &[
+            0xB8, 0xFF, 0xFF, // MOV AX, 0xFFFF
+            0xBB, 0x01, 0x00, // MOV BX, 0x0001
+            0xB9, 0x02, 0x00, // MOV CX, 0x0002
+            0xBA, 0x00, 0x00, // MOV DX, 0x0000
+            0x01, 0xC8, // ADD AX, CX
+            0x11, 0xD3, // ADC BX, DX
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AX, 0xFFFF
+    harness.step(); // MOV BX, 0x0001
+    harness.step(); // MOV CX, 0x0002
+    harness.step(); // MOV DX, 0x0000
+    harness.step(); // ADD AX, CX (AX = 0xFFFF + 0x0002 = 0x0001, CF = 1)
+
+    assert_eq!(harness.cpu.regs[0], 0x0001); // AX
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), true);
+
+    harness.step(); // ADC BX, DX (BX = 0x0001 + 0x0000 + 1 = 0x0002)
+
+    assert_eq!(harness.cpu.regs[3], 0x0002); // BX (high word)
+    assert_eq!(harness.cpu.regs[0], 0x0001); // AX (low word)
+}
