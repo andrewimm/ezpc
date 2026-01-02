@@ -162,8 +162,9 @@ impl Cpu {
                 instr = instr.with_src(Operand::imm16(rel16)).with_length(3);
             }
 
-            // Conditional jumps (0x72-0x75, 0x78-0x79)
-            0x72 | 0x73 | 0x74 | 0x75 | 0x78 | 0x79 => {
+            // Conditional jumps (0x70-0x7F)
+            0x70 | 0x71 | 0x72 | 0x73 | 0x74 | 0x75 | 0x76 | 0x77 | 0x78 | 0x79 | 0x7A | 0x7B
+            | 0x7C | 0x7D | 0x7E | 0x7F => {
                 let rel8 = self.fetch_u8(mem) as i8 as i16 as u16;
                 instr = instr.with_src(Operand::imm16(rel8)).with_length(2);
             }

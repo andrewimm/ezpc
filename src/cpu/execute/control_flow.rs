@@ -90,6 +90,116 @@ pub fn jnc(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
     }
 }
 
+/// JO - Jump if overflow
+/// Opcode: 0x70
+///
+/// If OF=1 then IP = IP + rel8
+pub fn jo(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    if cpu.get_flag(Cpu::OF) {
+        let offset = instr.src.value as i16;
+        cpu.ip = cpu.ip.wrapping_add(offset as u16);
+    }
+}
+
+/// JNO - Jump if not overflow
+/// Opcode: 0x71
+///
+/// If OF=0 then IP = IP + rel8
+pub fn jno(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    if !cpu.get_flag(Cpu::OF) {
+        let offset = instr.src.value as i16;
+        cpu.ip = cpu.ip.wrapping_add(offset as u16);
+    }
+}
+
+/// JBE/JNA - Jump if below or equal/not above
+/// Opcode: 0x76
+///
+/// If CF=1 or ZF=1 then IP = IP + rel8
+pub fn jbe(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    if cpu.get_flag(Cpu::CF) || cpu.get_flag(Cpu::ZF) {
+        let offset = instr.src.value as i16;
+        cpu.ip = cpu.ip.wrapping_add(offset as u16);
+    }
+}
+
+/// JA/JNBE - Jump if above/not below or equal
+/// Opcode: 0x77
+///
+/// If CF=0 and ZF=0 then IP = IP + rel8
+pub fn ja(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    if !cpu.get_flag(Cpu::CF) && !cpu.get_flag(Cpu::ZF) {
+        let offset = instr.src.value as i16;
+        cpu.ip = cpu.ip.wrapping_add(offset as u16);
+    }
+}
+
+/// JP/JPE - Jump if parity/parity even
+/// Opcode: 0x7A
+///
+/// If PF=1 then IP = IP + rel8
+pub fn jp(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    if cpu.get_flag(Cpu::PF) {
+        let offset = instr.src.value as i16;
+        cpu.ip = cpu.ip.wrapping_add(offset as u16);
+    }
+}
+
+/// JNP/JPO - Jump if not parity/parity odd
+/// Opcode: 0x7B
+///
+/// If PF=0 then IP = IP + rel8
+pub fn jnp(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    if !cpu.get_flag(Cpu::PF) {
+        let offset = instr.src.value as i16;
+        cpu.ip = cpu.ip.wrapping_add(offset as u16);
+    }
+}
+
+/// JL/JNGE - Jump if less/not greater or equal
+/// Opcode: 0x7C
+///
+/// If SF != OF then IP = IP + rel8
+pub fn jl(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    if cpu.get_flag(Cpu::SF) != cpu.get_flag(Cpu::OF) {
+        let offset = instr.src.value as i16;
+        cpu.ip = cpu.ip.wrapping_add(offset as u16);
+    }
+}
+
+/// JGE/JNL - Jump if greater or equal/not less
+/// Opcode: 0x7D
+///
+/// If SF = OF then IP = IP + rel8
+pub fn jge(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    if cpu.get_flag(Cpu::SF) == cpu.get_flag(Cpu::OF) {
+        let offset = instr.src.value as i16;
+        cpu.ip = cpu.ip.wrapping_add(offset as u16);
+    }
+}
+
+/// JLE/JNG - Jump if less or equal/not greater
+/// Opcode: 0x7E
+///
+/// If ZF=1 or SF != OF then IP = IP + rel8
+pub fn jle(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    if cpu.get_flag(Cpu::ZF) || (cpu.get_flag(Cpu::SF) != cpu.get_flag(Cpu::OF)) {
+        let offset = instr.src.value as i16;
+        cpu.ip = cpu.ip.wrapping_add(offset as u16);
+    }
+}
+
+/// JG/JNLE - Jump if greater/not less or equal
+/// Opcode: 0x7F
+///
+/// If ZF=0 and SF = OF then IP = IP + rel8
+pub fn jg(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    if !cpu.get_flag(Cpu::ZF) && (cpu.get_flag(Cpu::SF) == cpu.get_flag(Cpu::OF)) {
+        let offset = instr.src.value as i16;
+        cpu.ip = cpu.ip.wrapping_add(offset as u16);
+    }
+}
+
 /// CALL near relative - Call procedure with 16-bit relative offset
 /// Opcode: 0xE8
 ///

@@ -370,3 +370,372 @@ fn test_ret_far_imm() {
     harness.step(); // MOV AX, 0x1234
     assert_eq!(harness.cpu.regs[0], 0x1234);
 }
+
+#[test]
+fn test_jo_taken() {
+    let mut harness = CpuHarness::new();
+    // Manually set OF and test JO
+    harness.cpu.set_flag(ezpc::cpu::Cpu::OF, true);
+
+    harness.load_program(
+        &[
+            0x70, 0x02, // JO +2
+            0x90, 0x90, // NOPs
+            0xB8, 0x34, 0x12, // MOV AX, 0x1234
+        ],
+        0,
+    );
+
+    harness.step(); // JO +2
+    assert_eq!(harness.cpu.ip, 4);
+
+    harness.step(); // MOV AX, 0x1234
+    assert_eq!(harness.cpu.regs[0], 0x1234);
+}
+
+#[test]
+fn test_jno_not_taken() {
+    let mut harness = CpuHarness::new();
+    // Manually set OF and test JNO (should not jump)
+    harness.cpu.set_flag(ezpc::cpu::Cpu::OF, true);
+
+    harness.load_program(
+        &[
+            0x71, 0x02, // JNO +2
+            0xB8, 0x34, 0x12, // MOV AX, 0x1234
+        ],
+        0,
+    );
+
+    harness.step(); // JNO +2
+    assert_eq!(harness.cpu.ip, 2);
+
+    harness.step(); // MOV AX, 0x1234
+    assert_eq!(harness.cpu.regs[0], 0x1234);
+}
+
+#[test]
+fn test_jno_taken() {
+    let mut harness = CpuHarness::new();
+    // OF not set, JNO should jump
+    harness.load_program(
+        &[
+            0x71, 0x02, // JNO +2
+            0x90, 0x90, // NOPs
+            0xB8, 0x34, 0x12, // MOV AX, 0x1234
+        ],
+        0,
+    );
+
+    harness.step(); // JNO +2
+    assert_eq!(harness.cpu.ip, 4);
+
+    harness.step(); // MOV AX, 0x1234
+    assert_eq!(harness.cpu.regs[0], 0x1234);
+}
+
+#[test]
+fn test_jbe_taken_carry() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 255; ADD AL, 1 (sets CF); JBE +2 (should be taken)
+    harness.load_program(
+        &[
+            0xB0, 0xFF, // MOV AL, 255
+            0x04, 0x01, // ADD AL, 1 (sets CF)
+            0x76, 0x02, // JBE +2
+            0x90, 0x90, // 2 NOPs to skip
+            0xB8, 0x34, 0x12, // MOV AX, 0x1234
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 255
+    harness.step(); // ADD AL, 1
+    harness.step(); // JBE +2 (should be taken)
+
+    // IP should be 6 + 2 = 8
+    assert_eq!(harness.cpu.ip, 8);
+
+    harness.step(); // MOV AX, 0x1234
+    assert_eq!(harness.cpu.regs[0], 0x1234);
+}
+
+#[test]
+fn test_jbe_taken_zero() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0; ADD AL, 0 (sets ZF); JBE +2 (should be taken)
+    harness.load_program(
+        &[
+            0xB0, 0x00, // MOV AL, 0
+            0x04, 0x00, // ADD AL, 0 (sets ZF)
+            0x76, 0x02, // JBE +2
+            0x90, 0x90, // 2 NOPs to skip
+            0xB8, 0x34, 0x12, // MOV AX, 0x1234
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 0
+    harness.step(); // ADD AL, 0
+    harness.step(); // JBE +2 (should be taken)
+
+    // IP should be 6 + 2 = 8
+    assert_eq!(harness.cpu.ip, 8);
+
+    harness.step(); // MOV AX, 0x1234
+    assert_eq!(harness.cpu.regs[0], 0x1234);
+}
+
+#[test]
+fn test_ja_not_taken() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0; ADD AL, 0 (sets ZF); JA +2 (should NOT be taken)
+    harness.load_program(
+        &[
+            0xB0, 0x00, // MOV AL, 0
+            0x04, 0x00, // ADD AL, 0 (sets ZF)
+            0x77, 0x02, // JA +2
+            0xB8, 0x34, 0x12, // MOV AX, 0x1234 (should execute)
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 0
+    harness.step(); // ADD AL, 0
+    harness.step(); // JA +2 (not taken)
+
+    // IP should be 6 (not jumped)
+    assert_eq!(harness.cpu.ip, 6);
+
+    harness.step(); // MOV AX, 0x1234
+    assert_eq!(harness.cpu.regs[0], 0x1234);
+}
+
+#[test]
+fn test_ja_taken() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 1; ADD AL, 1 (no carry, not zero); JA +2 (should be taken)
+    harness.load_program(
+        &[
+            0xB0, 0x01, // MOV AL, 1
+            0x04, 0x01, // ADD AL, 1
+            0x77, 0x02, // JA +2
+            0x90, 0x90, // 2 NOPs to skip
+            0xB8, 0x34, 0x12, // MOV AX, 0x1234
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 1
+    harness.step(); // ADD AL, 1
+    harness.step(); // JA +2 (should be taken)
+
+    // IP should be 6 + 2 = 8
+    assert_eq!(harness.cpu.ip, 8);
+
+    harness.step(); // MOV AX, 0x1234
+    assert_eq!(harness.cpu.regs[0], 0x1234);
+}
+
+#[test]
+fn test_jp_taken() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0; ADD AL, 0 (even parity, PF=1); JP +2 (should be taken)
+    harness.load_program(
+        &[
+            0xB0, 0x00, // MOV AL, 0
+            0x04, 0x00, // ADD AL, 0 (sets PF for even parity)
+            0x7A, 0x02, // JP +2
+            0x90, 0x90, // 2 NOPs to skip
+            0xB8, 0x34, 0x12, // MOV AX, 0x1234
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 0
+    harness.step(); // ADD AL, 0
+    harness.step(); // JP +2 (should be taken)
+
+    // IP should be 6 + 2 = 8
+    assert_eq!(harness.cpu.ip, 8);
+
+    harness.step(); // MOV AX, 0x1234
+    assert_eq!(harness.cpu.regs[0], 0x1234);
+}
+
+#[test]
+fn test_jnp_taken() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 1; ADD AL, 0 (odd parity, PF=0); JNP +2 (should be taken)
+    harness.load_program(
+        &[
+            0xB0, 0x01, // MOV AL, 1
+            0x04, 0x00, // ADD AL, 0 (odd parity)
+            0x7B, 0x02, // JNP +2
+            0x90, 0x90, // 2 NOPs to skip
+            0xB8, 0x34, 0x12, // MOV AX, 0x1234
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 1
+    harness.step(); // ADD AL, 0
+    harness.step(); // JNP +2 (should be taken)
+
+    // IP should be 6 + 2 = 8
+    assert_eq!(harness.cpu.ip, 8);
+
+    harness.step(); // MOV AX, 0x1234
+    assert_eq!(harness.cpu.regs[0], 0x1234);
+}
+
+#[test]
+fn test_jl_taken() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0; ADD AL, 0x80; JL +2
+    harness.load_program(
+        &[
+            0xB0, 0x00, // MOV AL, 0
+            0x04, 0x80, // ADD AL, 0x80
+            0x7C, 0x02, // JL +2
+            0x90, 0x90, // NOPs
+            0xB8, 0x34, 0x12, // MOV AX, 0x1234
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 0
+    harness.step(); // ADD AL, 0x80
+    harness.step(); // JL +2
+    assert_eq!(harness.cpu.ip, 8);
+
+    harness.step(); // MOV AX, 0x1234
+    assert_eq!(harness.cpu.regs[0], 0x1234);
+}
+
+#[test]
+fn test_jge_taken() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 1; ADD AL, 1 (no overflow, SF=0, OF=0, SF==OF); JGE +2 (should be taken)
+    harness.load_program(
+        &[
+            0xB0, 0x01, // MOV AL, 1
+            0x04, 0x01, // ADD AL, 1 (SF=0, OF=0)
+            0x7D, 0x02, // JGE +2 (SF == OF, should be taken)
+            0x90, 0x90, // 2 NOPs to skip
+            0xB8, 0x34, 0x12, // MOV AX, 0x1234
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 1
+    harness.step(); // ADD AL, 1
+    harness.step(); // JGE +2 (should be taken)
+
+    // IP should be 6 + 2 = 8
+    assert_eq!(harness.cpu.ip, 8);
+
+    harness.step(); // MOV AX, 0x1234
+    assert_eq!(harness.cpu.regs[0], 0x1234);
+}
+
+#[test]
+fn test_jle_taken_zero() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0; ADD AL, 0 (ZF=1); JLE +2 (should be taken)
+    harness.load_program(
+        &[
+            0xB0, 0x00, // MOV AL, 0
+            0x04, 0x00, // ADD AL, 0 (ZF=1)
+            0x7E, 0x02, // JLE +2 (ZF=1 or SF!=OF, should be taken)
+            0x90, 0x90, // 2 NOPs to skip
+            0xB8, 0x34, 0x12, // MOV AX, 0x1234
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 0
+    harness.step(); // ADD AL, 0
+    harness.step(); // JLE +2 (should be taken)
+
+    // IP should be 6 + 2 = 8
+    assert_eq!(harness.cpu.ip, 8);
+
+    harness.step(); // MOV AX, 0x1234
+    assert_eq!(harness.cpu.regs[0], 0x1234);
+}
+
+#[test]
+fn test_jle_taken_less() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0; ADD AL, 0x80; JLE +2
+    harness.load_program(
+        &[
+            0xB0, 0x00, // MOV AL, 0
+            0x04, 0x80, // ADD AL, 0x80
+            0x7E, 0x02, // JLE +2
+            0x90, 0x90, // NOPs
+            0xB8, 0x34, 0x12, // MOV AX, 0x1234
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 0
+    harness.step(); // ADD AL, 0x80
+    harness.step(); // JLE +2
+    assert_eq!(harness.cpu.ip, 8);
+
+    harness.step(); // MOV AX, 0x1234
+    assert_eq!(harness.cpu.regs[0], 0x1234);
+}
+
+#[test]
+fn test_jg_taken() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 1; ADD AL, 1 (ZF=0, SF=0, OF=0, SF==OF); JG +2 (should be taken)
+    harness.load_program(
+        &[
+            0xB0, 0x01, // MOV AL, 1
+            0x04, 0x01, // ADD AL, 1 (ZF=0, SF=0, OF=0)
+            0x7F, 0x02, // JG +2 (ZF=0 and SF==OF, should be taken)
+            0x90, 0x90, // 2 NOPs to skip
+            0xB8, 0x34, 0x12, // MOV AX, 0x1234
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 1
+    harness.step(); // ADD AL, 1
+    harness.step(); // JG +2 (should be taken)
+
+    // IP should be 6 + 2 = 8
+    assert_eq!(harness.cpu.ip, 8);
+
+    harness.step(); // MOV AX, 0x1234
+    assert_eq!(harness.cpu.regs[0], 0x1234);
+}
+
+#[test]
+fn test_jg_not_taken_zero() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0; ADD AL, 0 (ZF=1); JG +2 (should NOT be taken)
+    harness.load_program(
+        &[
+            0xB0, 0x00, // MOV AL, 0
+            0x04, 0x00, // ADD AL, 0 (ZF=1)
+            0x7F, 0x02, // JG +2 (not taken because ZF=1)
+            0xB8, 0x34, 0x12, // MOV AX, 0x1234 (should execute)
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 0
+    harness.step(); // ADD AL, 0
+    harness.step(); // JG +2 (not taken)
+
+    // IP should be 6 (not jumped)
+    assert_eq!(harness.cpu.ip, 6);
+
+    harness.step(); // MOV AX, 0x1234
+    assert_eq!(harness.cpu.regs[0], 0x1234);
+}

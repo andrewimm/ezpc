@@ -130,22 +130,22 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     invalid_opcode, // 0x6E: OUTSB (80186+, not on 8088)
     invalid_opcode, // 0x6F: OUTSW (80186+, not on 8088)
     // 0x70-0x7F: Conditional jumps (short)
-    invalid_opcode,    // 0x70: JO (not implemented yet)
-    invalid_opcode,    // 0x71: JNO (not implemented yet)
+    control_flow::jo,  // 0x70: JO
+    control_flow::jno, // 0x71: JNO
     control_flow::jc,  // 0x72: JC/JB/JNAE
     control_flow::jnc, // 0x73: JNC/JAE/JNB
     control_flow::jz,  // 0x74: JZ/JE
     control_flow::jnz, // 0x75: JNZ/JNE
-    invalid_opcode,    // 0x76: JBE/JNA (not implemented yet)
-    invalid_opcode,    // 0x77: JA/JNBE (not implemented yet)
+    control_flow::jbe, // 0x76: JBE/JNA
+    control_flow::ja,  // 0x77: JA/JNBE
     control_flow::js,  // 0x78: JS
     control_flow::jns, // 0x79: JNS
-    invalid_opcode,    // 0x7A: JP/JPE (not implemented yet)
-    invalid_opcode,    // 0x7B: JNP/JPO (not implemented yet)
-    invalid_opcode,    // 0x7C: JL/JNGE (not implemented yet)
-    invalid_opcode,    // 0x7D: JGE/JNL (not implemented yet)
-    invalid_opcode,    // 0x7E: JLE/JNG (not implemented yet)
-    invalid_opcode,    // 0x7F: JG/JNLE (not implemented yet)
+    control_flow::jp,  // 0x7A: JP/JPE
+    control_flow::jnp, // 0x7B: JNP/JPO
+    control_flow::jl,  // 0x7C: JL/JNGE
+    control_flow::jge, // 0x7D: JGE/JNL
+    control_flow::jle, // 0x7E: JLE/JNG
+    control_flow::jg,  // 0x7F: JG/JNLE
     // 0x80-0x8F: Arithmetic and MOV instructions with immediate/ModR/M
     invalid_opcode, // 0x80: Arithmetic r/m8, imm8 (group, not implemented yet)
     invalid_opcode, // 0x81: Arithmetic r/m16, imm16 (group, not implemented yet)
