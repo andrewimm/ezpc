@@ -238,3 +238,135 @@ fn test_call_backward() {
     let return_addr = harness.mem.read_u16(0x0FFE);
     assert_eq!(return_addr, 11);
 }
+
+#[test]
+fn test_ret_near() {
+    let mut harness = CpuHarness::new();
+    // MOV SP, 0x1000; CALL +3; MOV AX, 0x1234; RET
+    harness.load_program(
+        &[
+            0xBC, 0x00, 0x10, // MOV SP, 0x1000 (offset 0-2)
+            0xE8, 0x03, 0x00, // CALL +3 (offset 3-5, after reading IP=6, jump to 6+3=9)
+            0xB8, 0x34, 0x12, // MOV AX, 0x1234 (offset 6-8)
+            0xC3, // RET (offset 9)
+        ],
+        0,
+    );
+
+    harness.step(); // MOV SP, 0x1000
+    harness.step(); // CALL +3, pushes return address 6, jumps to 9
+
+    // Verify we're at offset 9 (RET instruction)
+    assert_eq!(harness.cpu.ip, 9);
+    assert_eq!(harness.cpu.regs[4], 0x0FFE); // SP after push
+
+    harness.step(); // RET at offset 9, pops return address and jumps back
+
+    // Should be back at offset 6 (after the CALL)
+    assert_eq!(harness.cpu.ip, 6);
+    // SP should be restored to 0x1000
+    assert_eq!(harness.cpu.regs[4], 0x1000);
+
+    harness.step(); // MOV AX, 0x1234
+    assert_eq!(harness.cpu.regs[0], 0x1234);
+}
+
+#[test]
+fn test_ret_near_imm() {
+    let mut harness = CpuHarness::new();
+    // Manually set up stack with a dummy value to clean up
+    // MOV SP, 0x0FFE (simulate one value already pushed); CALL +3; MOV AX, 0x1234; RET 2
+    harness.load_program(
+        &[
+            0xBC, 0xFE, 0x0F, // MOV SP, 0x0FFE (offset 0-2)
+            0xE8, 0x03, 0x00, // CALL +3 (offset 3-5, after reading IP=6, jump to 6+3=9)
+            0xB8, 0x34, 0x12, // MOV AX, 0x1234 (offset 6-8)
+            0xC2, 0x02, 0x00, // RET 2 (offset 9-11)
+        ],
+        0,
+    );
+
+    harness.step(); // MOV SP, 0x0FFE
+    assert_eq!(harness.cpu.regs[4], 0x0FFE);
+
+    harness.step(); // CALL +3, pushes return address 6, jumps to 9
+    assert_eq!(harness.cpu.ip, 9); // At procedure (RET 2)
+    assert_eq!(harness.cpu.regs[4], 0x0FFC); // SP after push
+
+    harness.step(); // RET 2, pops return address and adds 2 to SP
+
+    // Should be back at offset 6
+    assert_eq!(harness.cpu.ip, 6);
+    // SP should be 0x1000 (0x0FFC + 2 for pop + 2 for cleanup)
+    assert_eq!(harness.cpu.regs[4], 0x1000);
+
+    harness.step(); // MOV AX, 0x1234
+    assert_eq!(harness.cpu.regs[0], 0x1234);
+}
+
+#[test]
+fn test_ret_far() {
+    let mut harness = CpuHarness::new();
+    // MOV SP, 0x1000; CALL far 0x0000:0x000B; MOV AX, 0x1234; RETF
+    harness.load_program(
+        &[
+            0xBC, 0x00, 0x10, // MOV SP, 0x1000 (offset 0-2)
+            0x9A, 0x0B, 0x00, 0x00, 0x00, // CALL far 0x0000:0x000B (offset 3-7)
+            0xB8, 0x34, 0x12, // MOV AX, 0x1234 (offset 8-10)
+            0xCB, // RETF (offset 11)
+        ],
+        0,
+    );
+
+    harness.step(); // MOV SP, 0x1000
+    harness.step(); // CALL far, pushes CS=0, IP=8, jumps to 0x0000:0x000B
+
+    // Verify we're at the far address (which is actually in same segment)
+    assert_eq!(harness.cpu.segments[1], 0x0000); // CS (unchanged)
+    assert_eq!(harness.cpu.ip, 0x000B); // IP at offset 11
+    assert_eq!(harness.cpu.regs[4], 0x0FFC); // SP after pushing CS and IP
+
+    harness.step(); // RETF at offset 11, pops IP and CS
+
+    // Should be back at CS=0, IP=8
+    assert_eq!(harness.cpu.segments[1], 0); // CS restored
+    assert_eq!(harness.cpu.ip, 8); // IP restored
+    assert_eq!(harness.cpu.regs[4], 0x1000); // SP restored
+
+    harness.step(); // MOV AX, 0x1234
+    assert_eq!(harness.cpu.regs[0], 0x1234);
+}
+
+#[test]
+fn test_ret_far_imm() {
+    let mut harness = CpuHarness::new();
+    // MOV SP, 0x0FFE (simulate one value already on stack); CALL far 0x0000:0x000B; MOV AX, 0x1234; RETF 2
+    harness.load_program(
+        &[
+            0xBC, 0xFE, 0x0F, // MOV SP, 0x0FFE (offset 0-2)
+            0x9A, 0x0B, 0x00, 0x00, 0x00, // CALL far 0x0000:0x000B (offset 3-7)
+            0xB8, 0x34, 0x12, // MOV AX, 0x1234 (offset 8-10)
+            0xCA, 0x02, 0x00, // RETF 2 (offset 11-13)
+        ],
+        0,
+    );
+
+    harness.step(); // MOV SP, 0x0FFE
+    assert_eq!(harness.cpu.regs[4], 0x0FFE);
+
+    harness.step(); // CALL far, pushes CS=0, IP=8
+    assert_eq!(harness.cpu.segments[1], 0x0000); // CS (unchanged)
+    assert_eq!(harness.cpu.ip, 0x000B); // IP at offset 11
+    assert_eq!(harness.cpu.regs[4], 0x0FFA); // SP after pushing CS and IP
+
+    harness.step(); // RETF 2, pops IP, CS, and adds 2 to SP
+
+    // Should be back at CS=0, IP=8
+    assert_eq!(harness.cpu.segments[1], 0); // CS restored
+    assert_eq!(harness.cpu.ip, 8); // IP restored
+    // SP should be 0x1000 (0x0FFA + 4 for pops + 2 for cleanup)
+    assert_eq!(harness.cpu.regs[4], 0x1000);
+
+    harness.step(); // MOV AX, 0x1234
+    assert_eq!(harness.cpu.regs[0], 0x1234);
+}

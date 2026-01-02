@@ -215,22 +215,22 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     data_transfer::mov_r_imm, // 0xBE: MOV SI, imm16
     data_transfer::mov_r_imm, // 0xBF: MOV DI, imm16
     // 0xC0-0xCF: Shifts, RET, LES, LDS, MOV, ENTER, LEAVE, RETF, INT
-    invalid_opcode,            // 0xC0: Shift r/m8, imm8 (80186+, not on 8088)
-    invalid_opcode,            // 0xC1: Shift r/m16, imm8 (80186+, not on 8088)
-    invalid_opcode,            // 0xC2: RET imm16 (not implemented yet)
-    invalid_opcode,            // 0xC3: RET (not implemented yet)
-    invalid_opcode,            // 0xC4: LES r16, m16:16 (not implemented yet)
-    invalid_opcode,            // 0xC5: LDS r16, m16:16 (not implemented yet)
-    data_transfer::mov_rm_imm, // 0xC6: MOV r/m8, imm8
-    data_transfer::mov_rm_imm, // 0xC7: MOV r/m16, imm16
-    invalid_opcode,            // 0xC8: ENTER (80186+, not on 8088)
-    invalid_opcode,            // 0xC9: LEAVE (80186+, not on 8088)
-    invalid_opcode,            // 0xCA: RETF imm16 (not implemented yet)
-    invalid_opcode,            // 0xCB: RETF (not implemented yet)
-    invalid_opcode,            // 0xCC: INT 3 (not implemented yet)
-    invalid_opcode,            // 0xCD: INT imm8 (not implemented yet)
-    invalid_opcode,            // 0xCE: INTO (not implemented yet)
-    invalid_opcode,            // 0xCF: IRET (not implemented yet)
+    invalid_opcode,             // 0xC0: Shift r/m8, imm8 (80186+, not on 8088)
+    invalid_opcode,             // 0xC1: Shift r/m16, imm8 (80186+, not on 8088)
+    control_flow::ret_near_imm, // 0xC2: RET imm16
+    control_flow::ret_near,     // 0xC3: RET
+    invalid_opcode,             // 0xC4: LES r16, m16:16 (not implemented yet)
+    invalid_opcode,             // 0xC5: LDS r16, m16:16 (not implemented yet)
+    data_transfer::mov_rm_imm,  // 0xC6: MOV r/m8, imm8
+    data_transfer::mov_rm_imm,  // 0xC7: MOV r/m16, imm16
+    invalid_opcode,             // 0xC8: ENTER (80186+, not on 8088)
+    invalid_opcode,             // 0xC9: LEAVE (80186+, not on 8088)
+    control_flow::ret_far_imm,  // 0xCA: RETF imm16
+    control_flow::ret_far,      // 0xCB: RETF
+    invalid_opcode,             // 0xCC: INT 3 (not implemented yet)
+    invalid_opcode,             // 0xCD: INT imm8 (not implemented yet)
+    invalid_opcode,             // 0xCE: INTO (not implemented yet)
+    invalid_opcode,             // 0xCF: IRET (not implemented yet)
     // 0xD0-0xDF: Shifts and rotates
     invalid_opcode, // 0xD0: Shift r/m8, 1 (not implemented yet)
     invalid_opcode, // 0xD1: Shift r/m16, 1 (not implemented yet)

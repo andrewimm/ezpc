@@ -184,6 +184,28 @@ impl Cpu {
                     .with_length(5);
             }
 
+            // RET near (0xC3) - no operands
+            0xC3 => {
+                // No operands needed
+            }
+
+            // RET near imm16 (0xC2)
+            0xC2 => {
+                let imm = self.fetch_u16(mem);
+                instr = instr.with_src(Operand::imm16(imm)).with_length(3);
+            }
+
+            // RETF (0xCB) - no operands
+            0xCB => {
+                // No operands needed
+            }
+
+            // RETF imm16 (0xCA)
+            0xCA => {
+                let imm = self.fetch_u16(mem);
+                instr = instr.with_src(Operand::imm16(imm)).with_length(3);
+            }
+
             // Group 0xFF: INC/DEC/CALL/JMP/PUSH r/m16
             0xFF => {
                 let modrm = self.fetch_u8(mem);

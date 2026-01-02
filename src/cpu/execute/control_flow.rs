@@ -242,3 +242,57 @@ pub fn jmp_m16_16(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction
     cpu.write_seg(1, new_cs); // CS
     cpu.ip = new_ip;
 }
+
+/// RET near - Return from near procedure
+/// Opcode: 0xC3
+///
+/// Stack operation: IP = POP()
+pub fn ret_near(cpu: &mut Cpu, mem: &mut MemoryBus, _instr: &DecodedInstruction) {
+    use super::stack::pop_word;
+    cpu.ip = pop_word(cpu, mem);
+}
+
+/// RET near imm16 - Return from near procedure with stack cleanup
+/// Opcode: 0xC2
+///
+/// Stack operation: IP = POP(), then SP = SP + imm16
+pub fn ret_near_imm(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    use super::stack::pop_word;
+
+    // Pop return address
+    cpu.ip = pop_word(cpu, mem);
+
+    // Clean up stack by adding immediate to SP
+    let cleanup = instr.src.value;
+    cpu.regs[4] = cpu.regs[4].wrapping_add(cleanup); // SP
+}
+
+/// RETF - Return from far procedure
+/// Opcode: 0xCB
+///
+/// Stack operation: IP = POP(), CS = POP()
+pub fn ret_far(cpu: &mut Cpu, mem: &mut MemoryBus, _instr: &DecodedInstruction) {
+    use super::stack::pop_word;
+
+    // Pop IP first (pushed last), then CS
+    cpu.ip = pop_word(cpu, mem);
+    let new_cs = pop_word(cpu, mem);
+    cpu.write_seg(1, new_cs); // CS
+}
+
+/// RETF imm16 - Return from far procedure with stack cleanup
+/// Opcode: 0xCA
+///
+/// Stack operation: IP = POP(), CS = POP(), then SP = SP + imm16
+pub fn ret_far_imm(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    use super::stack::pop_word;
+
+    // Pop IP and CS
+    cpu.ip = pop_word(cpu, mem);
+    let new_cs = pop_word(cpu, mem);
+    cpu.write_seg(1, new_cs); // CS
+
+    // Clean up stack by adding immediate to SP
+    let cleanup = instr.src.value;
+    cpu.regs[4] = cpu.regs[4].wrapping_add(cleanup); // SP
+}
