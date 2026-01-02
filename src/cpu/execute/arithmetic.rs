@@ -16,14 +16,18 @@ pub fn add_rm_r(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) 
     let is_byte = instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
 
     if is_byte {
-        // For 8-bit add, we need to capture carry in bit 8
-        let result = (dst_value as u8) as u32 + (src_value as u8) as u32;
+        let dst8 = dst_value as u8;
+        let src8 = src_value as u8;
+        let result = dst8 as u32 + src8 as u32;
         cpu.write_operand(mem, &instr.dst, (result & 0xFF) as u16);
+        cpu.set_add8_of_af(dst8, src8, result);
         cpu.set_lazy_flags(result, FlagOp::Add8);
     } else {
-        // For 16-bit add, we need to capture carry in bit 16
-        let result = dst_value as u32 + src_value as u32;
+        let dst16 = dst_value;
+        let src16 = src_value;
+        let result = dst16 as u32 + src16 as u32;
         cpu.write_operand(mem, &instr.dst, (result & 0xFFFF) as u16);
+        cpu.set_add16_of_af(dst16, src16, result);
         cpu.set_lazy_flags(result, FlagOp::Add16);
     }
 }
@@ -39,12 +43,18 @@ pub fn add_r_rm(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) 
     let is_byte = instr.dst.op_type == OperandType::Reg8;
 
     if is_byte {
-        let result = (dst_value as u8) as u32 + (src_value as u8) as u32;
+        let dst8 = dst_value as u8;
+        let src8 = src_value as u8;
+        let result = dst8 as u32 + src8 as u32;
         cpu.write_operand(mem, &instr.dst, (result & 0xFF) as u16);
+        cpu.set_add8_of_af(dst8, src8, result);
         cpu.set_lazy_flags(result, FlagOp::Add8);
     } else {
-        let result = dst_value as u32 + src_value as u32;
+        let dst16 = dst_value;
+        let src16 = src_value;
+        let result = dst16 as u32 + src16 as u32;
         cpu.write_operand(mem, &instr.dst, (result & 0xFFFF) as u16);
+        cpu.set_add16_of_af(dst16, src16, result);
         cpu.set_lazy_flags(result, FlagOp::Add16);
     }
 }
@@ -60,12 +70,18 @@ pub fn add_acc_imm(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstructio
     let is_byte = instr.dst.op_type == OperandType::Reg8;
 
     if is_byte {
-        let result = (dst_value as u8) as u32 + (imm_value as u8) as u32;
+        let dst8 = dst_value as u8;
+        let imm8 = imm_value as u8;
+        let result = dst8 as u32 + imm8 as u32;
         cpu.write_operand(mem, &instr.dst, (result & 0xFF) as u16);
+        cpu.set_add8_of_af(dst8, imm8, result);
         cpu.set_lazy_flags(result, FlagOp::Add8);
     } else {
-        let result = dst_value as u32 + imm_value as u32;
+        let dst16 = dst_value;
+        let imm16 = imm_value;
+        let result = dst16 as u32 + imm16 as u32;
         cpu.write_operand(mem, &instr.dst, (result & 0xFFFF) as u16);
+        cpu.set_add16_of_af(dst16, imm16, result);
         cpu.set_lazy_flags(result, FlagOp::Add16);
     }
 }
@@ -81,12 +97,18 @@ pub fn add_rm_imm(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction
     let is_byte = instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
 
     if is_byte {
-        let result = (dst_value as u8) as u32 + (imm_value as u8) as u32;
+        let dst8 = dst_value as u8;
+        let imm8 = imm_value as u8;
+        let result = dst8 as u32 + imm8 as u32;
         cpu.write_operand(mem, &instr.dst, (result & 0xFF) as u16);
+        cpu.set_add8_of_af(dst8, imm8, result);
         cpu.set_lazy_flags(result, FlagOp::Add8);
     } else {
-        let result = dst_value as u32 + imm_value as u32;
+        let dst16 = dst_value;
+        let imm16 = imm_value;
+        let result = dst16 as u32 + imm16 as u32;
         cpu.write_operand(mem, &instr.dst, (result & 0xFFFF) as u16);
+        cpu.set_add16_of_af(dst16, imm16, result);
         cpu.set_lazy_flags(result, FlagOp::Add16);
     }
 }
@@ -99,6 +121,7 @@ pub fn inc_r16(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
     let value = cpu.read_operand(mem, &instr.dst);
     let result = value.wrapping_add(1);
     cpu.write_operand(mem, &instr.dst, result);
+    cpu.set_inc16_of_af(value, result);
     cpu.set_lazy_flags(result as u32, FlagOp::Inc16);
 }
 
@@ -111,12 +134,15 @@ pub fn inc_rm(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
     let is_byte = instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
 
     if is_byte {
-        let result = (value as u8).wrapping_add(1);
+        let val8 = value as u8;
+        let result = val8.wrapping_add(1);
         cpu.write_operand(mem, &instr.dst, result as u16);
+        cpu.set_inc8_of_af(val8, result);
         cpu.set_lazy_flags(result as u32, FlagOp::Inc8);
     } else {
         let result = value.wrapping_add(1);
         cpu.write_operand(mem, &instr.dst, result);
+        cpu.set_inc16_of_af(value, result);
         cpu.set_lazy_flags(result as u32, FlagOp::Inc16);
     }
 }
@@ -129,6 +155,7 @@ pub fn dec_r16(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
     let value = cpu.read_operand(mem, &instr.dst);
     let result = value.wrapping_sub(1);
     cpu.write_operand(mem, &instr.dst, result);
+    cpu.set_dec16_of_af(value, result);
     cpu.set_lazy_flags(result as u32, FlagOp::Dec16);
 }
 
@@ -141,12 +168,15 @@ pub fn dec_rm(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
     let is_byte = instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
 
     if is_byte {
-        let result = (value as u8).wrapping_sub(1);
+        let val8 = value as u8;
+        let result = val8.wrapping_sub(1);
         cpu.write_operand(mem, &instr.dst, result as u16);
+        cpu.set_dec8_of_af(val8, result);
         cpu.set_lazy_flags(result as u32, FlagOp::Dec8);
     } else {
         let result = value.wrapping_sub(1);
         cpu.write_operand(mem, &instr.dst, result);
+        cpu.set_dec16_of_af(value, result);
         cpu.set_lazy_flags(result as u32, FlagOp::Dec16);
     }
 }

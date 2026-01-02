@@ -219,8 +219,12 @@ impl Cpu {
     }
 
     /// Compute flags from lazy state
+    /// OF and AF are computed eagerly and preserved from self.flags
     fn compute_flags(&self) -> u16 {
         let mut flags = self.flags & 0b0010; // Keep bit 1 (always set)
+
+        // Preserve OF and AF (they are computed eagerly)
+        flags |= self.flags & (Self::OF | Self::AF);
 
         match self.last_op {
             FlagOp::None => return self.flags,
@@ -329,6 +333,168 @@ impl Cpu {
             self.flags &= !flag;
         }
         self.last_op = FlagOp::None;
+    }
+
+    /// Compute and set OF and AF flags for 8-bit ADD operation
+    /// OF: overflow when two same-sign operands produce opposite-sign result
+    /// AF: auxiliary carry from bit 3 to bit 4
+    #[inline(always)]
+    pub fn set_add8_of_af(&mut self, op1: u8, op2: u8, result: u32) {
+        // Overflow: ((op1 ^ result) & (op2 ^ result)) & 0x80
+        let overflow = ((op1 as u32 ^ result) & (op2 as u32 ^ result)) & 0x80;
+        if overflow != 0 {
+            self.flags |= Self::OF;
+        } else {
+            self.flags &= !Self::OF;
+        }
+
+        // Auxiliary carry: carry from bit 3 to bit 4
+        let aux_carry = ((op1 as u32) ^ (op2 as u32) ^ result) & 0x10;
+        if aux_carry != 0 {
+            self.flags |= Self::AF;
+        } else {
+            self.flags &= !Self::AF;
+        }
+    }
+
+    /// Compute and set OF and AF flags for 16-bit ADD operation
+    #[inline(always)]
+    pub fn set_add16_of_af(&mut self, op1: u16, op2: u16, result: u32) {
+        // Overflow: ((op1 ^ result) & (op2 ^ result)) & 0x8000
+        let overflow = ((op1 as u32 ^ result) & (op2 as u32 ^ result)) & 0x8000;
+        if overflow != 0 {
+            self.flags |= Self::OF;
+        } else {
+            self.flags &= !Self::OF;
+        }
+
+        // Auxiliary carry: carry from bit 3 to bit 4
+        let aux_carry = ((op1 as u32) ^ (op2 as u32) ^ result) & 0x10;
+        if aux_carry != 0 {
+            self.flags |= Self::AF;
+        } else {
+            self.flags &= !Self::AF;
+        }
+    }
+
+    /// Compute and set OF and AF flags for 8-bit SUB operation
+    /// OF: overflow when subtracting different-sign operands produces wrong sign
+    /// AF: auxiliary borrow from bit 4 to bit 3
+    #[inline(always)]
+    pub fn set_sub8_of_af(&mut self, op1: u8, op2: u8, result: u32) {
+        // Overflow: ((op1 ^ op2) & (op1 ^ result)) & 0x80
+        let overflow = ((op1 as u32 ^ op2 as u32) & (op1 as u32 ^ result)) & 0x80;
+        if overflow != 0 {
+            self.flags |= Self::OF;
+        } else {
+            self.flags &= !Self::OF;
+        }
+
+        // Auxiliary borrow: borrow from bit 4 to bit 3
+        let aux_borrow = ((op1 as u32) ^ (op2 as u32) ^ result) & 0x10;
+        if aux_borrow != 0 {
+            self.flags |= Self::AF;
+        } else {
+            self.flags &= !Self::AF;
+        }
+    }
+
+    /// Compute and set OF and AF flags for 16-bit SUB operation
+    #[inline(always)]
+    pub fn set_sub16_of_af(&mut self, op1: u16, op2: u16, result: u32) {
+        // Overflow: ((op1 ^ op2) & (op1 ^ result)) & 0x8000
+        let overflow = ((op1 as u32 ^ op2 as u32) & (op1 as u32 ^ result)) & 0x8000;
+        if overflow != 0 {
+            self.flags |= Self::OF;
+        } else {
+            self.flags &= !Self::OF;
+        }
+
+        // Auxiliary borrow: borrow from bit 4 to bit 3
+        let aux_borrow = ((op1 as u32) ^ (op2 as u32) ^ result) & 0x10;
+        if aux_borrow != 0 {
+            self.flags |= Self::AF;
+        } else {
+            self.flags &= !Self::AF;
+        }
+    }
+
+    /// Compute and set OF and AF flags for 8-bit INC operation
+    /// INC doesn't affect CF, and OF is set when incrementing 0x7F
+    #[inline(always)]
+    pub fn set_inc8_of_af(&mut self, op1: u8, result: u8) {
+        // Overflow only when 0x7F + 1 = 0x80 (max positive to min negative)
+        if op1 == 0x7F && result == 0x80 {
+            self.flags |= Self::OF;
+        } else {
+            self.flags &= !Self::OF;
+        }
+
+        // Auxiliary carry from bit 3 to bit 4
+        let aux_carry = ((op1 as u32) ^ 1 ^ (result as u32)) & 0x10;
+        if aux_carry != 0 {
+            self.flags |= Self::AF;
+        } else {
+            self.flags &= !Self::AF;
+        }
+    }
+
+    /// Compute and set OF and AF flags for 16-bit INC operation
+    #[inline(always)]
+    pub fn set_inc16_of_af(&mut self, op1: u16, result: u16) {
+        // Overflow only when 0x7FFF + 1 = 0x8000
+        if op1 == 0x7FFF && result == 0x8000 {
+            self.flags |= Self::OF;
+        } else {
+            self.flags &= !Self::OF;
+        }
+
+        // Auxiliary carry from bit 3 to bit 4
+        let aux_carry = ((op1 as u32) ^ 1 ^ (result as u32)) & 0x10;
+        if aux_carry != 0 {
+            self.flags |= Self::AF;
+        } else {
+            self.flags &= !Self::AF;
+        }
+    }
+
+    /// Compute and set OF and AF flags for 8-bit DEC operation
+    /// DEC doesn't affect CF, and OF is set when decrementing 0x80
+    #[inline(always)]
+    pub fn set_dec8_of_af(&mut self, op1: u8, result: u8) {
+        // Overflow only when 0x80 - 1 = 0x7F (min negative to max positive)
+        if op1 == 0x80 && result == 0x7F {
+            self.flags |= Self::OF;
+        } else {
+            self.flags &= !Self::OF;
+        }
+
+        // Auxiliary borrow from bit 4 to bit 3
+        let aux_borrow = ((op1 as u32) ^ 1 ^ (result as u32)) & 0x10;
+        if aux_borrow != 0 {
+            self.flags |= Self::AF;
+        } else {
+            self.flags &= !Self::AF;
+        }
+    }
+
+    /// Compute and set OF and AF flags for 16-bit DEC operation
+    #[inline(always)]
+    pub fn set_dec16_of_af(&mut self, op1: u16, result: u16) {
+        // Overflow only when 0x8000 - 1 = 0x7FFF
+        if op1 == 0x8000 && result == 0x7FFF {
+            self.flags |= Self::OF;
+        } else {
+            self.flags &= !Self::OF;
+        }
+
+        // Auxiliary borrow from bit 4 to bit 3
+        let aux_borrow = ((op1 as u32) ^ 1 ^ (result as u32)) & 0x10;
+        if aux_borrow != 0 {
+            self.flags |= Self::AF;
+        } else {
+            self.flags &= !Self::AF;
+        }
     }
 
     // === Instruction Decoding Methods ===
