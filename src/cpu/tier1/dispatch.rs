@@ -45,22 +45,22 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     invalid_opcode, // 0x1E: PUSH DS (not implemented yet)
     invalid_opcode, // 0x1F: POP DS (not implemented yet)
     // 0x20-0x2F: AND, SUB
-    invalid_opcode, // 0x20: AND r/m8, r8 (not implemented yet)
-    invalid_opcode, // 0x21: AND r/m16, r16 (not implemented yet)
-    invalid_opcode, // 0x22: AND r8, r/m8 (not implemented yet)
-    invalid_opcode, // 0x23: AND r16, r/m16 (not implemented yet)
-    invalid_opcode, // 0x24: AND AL, imm8 (not implemented yet)
-    invalid_opcode, // 0x25: AND AX, imm16 (not implemented yet)
-    invalid_opcode, // 0x26: ES segment prefix (not implemented yet)
-    invalid_opcode, // 0x27: DAA (not implemented yet)
-    invalid_opcode, // 0x28: SUB r/m8, r8 (not implemented yet)
-    invalid_opcode, // 0x29: SUB r/m16, r16 (not implemented yet)
-    invalid_opcode, // 0x2A: SUB r8, r/m8 (not implemented yet)
-    invalid_opcode, // 0x2B: SUB r16, r/m16 (not implemented yet)
-    invalid_opcode, // 0x2C: SUB AL, imm8 (not implemented yet)
-    invalid_opcode, // 0x2D: SUB AX, imm16 (not implemented yet)
-    invalid_opcode, // 0x2E: CS segment prefix (not implemented yet)
-    invalid_opcode, // 0x2F: DAS (not implemented yet)
+    logic::and_rm_r,    // 0x20: AND r/m8, r8
+    logic::and_rm_r,    // 0x21: AND r/m16, r16
+    logic::and_r_rm,    // 0x22: AND r8, r/m8
+    logic::and_r_rm,    // 0x23: AND r16, r/m16
+    logic::and_acc_imm, // 0x24: AND AL, imm8
+    logic::and_acc_imm, // 0x25: AND AX, imm16
+    invalid_opcode,     // 0x26: ES segment prefix (not implemented yet)
+    invalid_opcode,     // 0x27: DAA (not implemented yet)
+    invalid_opcode,     // 0x28: SUB r/m8, r8 (not implemented yet)
+    invalid_opcode,     // 0x29: SUB r/m16, r16 (not implemented yet)
+    invalid_opcode,     // 0x2A: SUB r8, r/m8 (not implemented yet)
+    invalid_opcode,     // 0x2B: SUB r16, r/m16 (not implemented yet)
+    invalid_opcode,     // 0x2C: SUB AL, imm8 (not implemented yet)
+    invalid_opcode,     // 0x2D: SUB AX, imm16 (not implemented yet)
+    invalid_opcode,     // 0x2E: CS segment prefix (not implemented yet)
+    invalid_opcode,     // 0x2F: DAS (not implemented yet)
     // 0x30-0x3F: XOR, CMP
     invalid_opcode, // 0x30: XOR r/m8, r8 (not implemented yet)
     invalid_opcode, // 0x31: XOR r/m16, r16 (not implemented yet)

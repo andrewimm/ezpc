@@ -497,6 +497,13 @@ impl Cpu {
         }
     }
 
+    /// Clear OF, CF, and AF flags (used by logical operations)
+    /// Logical operations (AND, OR, XOR) always clear CF and OF, and leave AF undefined
+    #[inline(always)]
+    pub fn clear_of_cf_af(&mut self) {
+        self.flags &= !(Self::OF | Self::CF | Self::AF);
+    }
+
     // === Instruction Decoding Methods ===
 
     /// Fetch a byte from CS:IP and advance IP
