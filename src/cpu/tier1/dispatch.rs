@@ -174,7 +174,7 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     data_transfer::xchg_ax_r16, // 0x97: XCHG AX, DI
     invalid_opcode,             // 0x98: CBW (not implemented yet)
     invalid_opcode,             // 0x99: CWD (not implemented yet)
-    invalid_opcode,             // 0x9A: CALL far (not implemented yet)
+    control_flow::call_far,     // 0x9A: CALL far
     invalid_opcode,             // 0x9B: WAIT (not implemented yet)
     invalid_opcode,             // 0x9C: PUSHF (not implemented yet)
     invalid_opcode,             // 0x9D: POPF (not implemented yet)
@@ -257,7 +257,7 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     invalid_opcode,          // 0xE5: IN AX, imm8 (not implemented yet)
     invalid_opcode,          // 0xE6: OUT imm8, AL (not implemented yet)
     invalid_opcode,          // 0xE7: OUT imm8, AX (not implemented yet)
-    invalid_opcode,          // 0xE8: CALL near (not implemented yet)
+    control_flow::call_near, // 0xE8: CALL near
     control_flow::jmp_near,  // 0xE9: JMP near
     invalid_opcode,          // 0xEA: JMP far (not implemented yet)
     control_flow::jmp_short, // 0xEB: JMP short
@@ -266,12 +266,12 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     invalid_opcode,          // 0xEE: OUT DX, AL (not implemented yet)
     invalid_opcode,          // 0xEF: OUT DX, AX (not implemented yet)
     // 0xF0-0xFF: LOCK, INT1, REP, HLT, CMC, and groups
-    invalid_opcode, // 0xF0: LOCK prefix (not implemented yet)
-    invalid_opcode, // 0xF1: INT1 (undocumented, not implemented)
-    invalid_opcode, // 0xF2: REPNE/REPNZ prefix (not implemented yet)
-    invalid_opcode, // 0xF3: REP/REPE/REPZ prefix (not implemented yet)
-    invalid_opcode, // 0xF4: HLT (not implemented yet)
-    invalid_opcode, // 0xF5: CMC (not implemented yet)
+    invalid_opcode,         // 0xF0: LOCK prefix (not implemented yet)
+    invalid_opcode,         // 0xF1: INT1 (undocumented, not implemented)
+    invalid_opcode,         // 0xF2: REPNE/REPNZ prefix (not implemented yet)
+    invalid_opcode,         // 0xF3: REP/REPE/REPZ prefix (not implemented yet)
+    invalid_opcode,         // 0xF4: HLT (not implemented yet)
+    invalid_opcode,         // 0xF5: CMC (not implemented yet)
     invalid_opcode, // 0xF6: TEST/NOT/NEG/MUL/IMUL/DIV/IDIV r/m8 (group, not implemented yet)
     invalid_opcode, // 0xF7: TEST/NOT/NEG/MUL/IMUL/DIV/IDIV r/m16 (group, not implemented yet)
     invalid_opcode, // 0xF8: CLC (not implemented yet)
@@ -281,5 +281,5 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     invalid_opcode, // 0xFC: CLD (not implemented yet)
     invalid_opcode, // 0xFD: STD (not implemented yet)
     invalid_opcode, // 0xFE: INC/DEC r/m8 (group, not implemented yet)
-    invalid_opcode, // 0xFF: INC/DEC/CALL/JMP/PUSH r/m16 (group, not implemented yet)
+    control_flow::group_ff, // 0xFF: INC/DEC/CALL/JMP/PUSH r/m16 (group)
 ];

@@ -168,6 +168,35 @@ impl Cpu {
                 instr = instr.with_src(Operand::imm16(rel8)).with_length(2);
             }
 
+            // CALL near (0xE8)
+            0xE8 => {
+                let rel16 = self.fetch_u16(mem);
+                instr = instr.with_src(Operand::imm16(rel16)).with_length(3);
+            }
+
+            // CALL far (0x9A)
+            0x9A => {
+                let offset = self.fetch_u16(mem);
+                let segment = self.fetch_u16(mem);
+                instr = instr
+                    .with_src(Operand::imm16(offset))
+                    .with_dst(Operand::imm16(segment))
+                    .with_length(5);
+            }
+
+            // Group 0xFF: INC/DEC/CALL/JMP/PUSH r/m16
+            0xFF => {
+                let modrm = self.fetch_u8(mem);
+                let reg = (modrm >> 3) & 0x07;
+                let (rm_operand, extra_len) = self.decode_rm_from_modrm_byte(mem, modrm, false);
+
+                // Store reg field in high byte of dst.value for group_ff to use
+                let mut dst_with_reg = rm_operand;
+                dst_with_reg.value = (dst_with_reg.value & 0xFF) | ((reg as u16) << 8);
+
+                instr = instr.with_dst(dst_with_reg).with_length(1 + 1 + extra_len);
+            }
+
             // Default case for unimplemented/invalid opcodes
             _ => {
                 // No operands, length is just 1

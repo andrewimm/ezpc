@@ -543,8 +543,9 @@ impl Cpu {
     }
 
     /// Helper to calculate effective address from operand encoding
+    /// Calculate effective address from operand
     /// Returns (segment_index, effective_address)
-    fn calculate_ea_from_operand(
+    pub fn calculate_ea_from_operand(
         &self,
         operand: &crate::cpu::decode::Operand,
         base_index: u8,

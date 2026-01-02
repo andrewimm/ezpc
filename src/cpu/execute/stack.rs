@@ -43,7 +43,7 @@ pub fn pop_rm16(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) 
 /// Helper: Push a 16-bit value onto the stack
 /// The stack grows downward (SP decrements before write)
 #[inline(always)]
-fn push_word(cpu: &mut Cpu, mem: &mut MemoryBus, value: u16) {
+pub fn push_word(cpu: &mut Cpu, mem: &mut MemoryBus, value: u16) {
     let sp = cpu.read_reg16(4).wrapping_sub(2); // SP -= 2
     cpu.write_reg16(4, sp);
     let ss = cpu.read_seg(2); // SS
@@ -53,7 +53,7 @@ fn push_word(cpu: &mut Cpu, mem: &mut MemoryBus, value: u16) {
 /// Helper: Pop a 16-bit value from the stack
 /// The stack grows downward (SP increments after read)
 #[inline(always)]
-fn pop_word(cpu: &mut Cpu, mem: &MemoryBus) -> u16 {
+pub fn pop_word(cpu: &mut Cpu, mem: &MemoryBus) -> u16 {
     let sp = cpu.read_reg16(4); // SP
     let ss = cpu.read_seg(2); // SS
     let value = cpu.read_mem16(mem, ss, sp);
