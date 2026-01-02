@@ -85,6 +85,11 @@ include opcode decoding, implementation logic, and tests proving it works.
 - Run `cargo fmt` to format code, if any Rust files were modified
 - Verify your change is complete and functional
 
+### After Each Commit
+
+- Run `git status` and make sure there are no uncommitted changes. If there are,
+add them to the most recent commit or create a new commit as appropriate.
+
 ## Implementation Approach
 
 ### Phase-by-Phase Development
