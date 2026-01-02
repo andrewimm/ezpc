@@ -264,3 +264,145 @@ fn test_or_rm_r_word() {
     assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // CF should be clear
     assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::OF)); // OF should be clear
 }
+
+// XOR instruction tests
+
+#[test]
+fn test_xor_r8_imm() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0xFF; XOR AL, 0x0F
+    harness.load_program(&[0xB0, 0xFF, 0x34, 0x0F], 0);
+
+    harness.step(); // MOV AL, 0xFF
+    harness.step(); // XOR AL, 0x0F
+
+    assert_eq!(harness.cpu.read_reg8(0), 0xF0); // AL = 0xF0
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // CF should be clear
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::OF)); // OF should be clear
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::ZF)); // ZF should be clear
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::SF)); // SF should be set (bit 7 is 1)
+}
+
+#[test]
+fn test_xor_r16_imm() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0xFFFF; XOR AX, 0x00FF
+    harness.load_program(&[0xB8, 0xFF, 0xFF, 0x35, 0xFF, 0x00], 0);
+
+    harness.step(); // MOV AX, 0xFFFF
+    harness.step(); // XOR AX, 0x00FF
+
+    assert_eq!(harness.cpu.regs[0], 0xFF00); // AX = 0xFF00
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // CF should be clear
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::OF)); // OF should be clear
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::ZF)); // ZF should be clear
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::SF)); // SF should be set
+}
+
+#[test]
+fn test_xor_zero_result() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0xFF; XOR AL, 0xFF
+    harness.load_program(&[0xB0, 0xFF, 0x34, 0xFF], 0);
+
+    harness.step(); // MOV AL, 0xFF
+    harness.step(); // XOR AL, 0xFF
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x00); // AL = 0 (XOR with itself)
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // CF should be clear
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::OF)); // OF should be clear
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF)); // ZF should be set
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::SF)); // SF should be clear
+}
+
+#[test]
+fn test_xor_self_register() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x55; XOR AL, AL (common idiom for zeroing a register)
+    harness.load_program(&[0xB0, 0x55, 0x32, 0xC0], 0);
+
+    harness.step(); // MOV AL, 0x55
+    harness.step(); // XOR AL, AL (opcode 0x32, ModR/M 0xC0)
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x00); // AL = 0
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // CF should be clear
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::OF)); // OF should be clear
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF)); // ZF should be set
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::SF)); // SF should be clear
+}
+
+#[test]
+fn test_xor_sign_flag() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0xFF; XOR AL, 0x7F
+    harness.load_program(&[0xB0, 0xFF, 0x34, 0x7F], 0);
+
+    harness.step(); // MOV AL, 0xFF
+    harness.step(); // XOR AL, 0x7F
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x80); // AL = 0x80
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // CF should be clear
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::OF)); // OF should be clear
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::ZF)); // ZF should be clear
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::SF)); // SF should be set (bit 7 is 1)
+}
+
+#[test]
+fn test_xor_r_rm_byte() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0xAA; MOV CL, 0x55; XOR AL, CL
+    harness.load_program(&[0xB0, 0xAA, 0xB1, 0x55, 0x32, 0xC1], 0);
+
+    harness.step(); // MOV AL, 0xAA
+    harness.step(); // MOV CL, 0x55
+    harness.step(); // XOR AL, CL (opcode 0x32, ModR/M 0xC1)
+
+    assert_eq!(harness.cpu.read_reg8(0), 0xFF); // AL = 0xFF
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // CF should be clear
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::OF)); // OF should be clear
+}
+
+#[test]
+fn test_xor_r_rm_word() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0xAAAA; MOV CX, 0x5555; XOR AX, CX
+    harness.load_program(&[0xB8, 0xAA, 0xAA, 0xB9, 0x55, 0x55, 0x33, 0xC1], 0);
+
+    harness.step(); // MOV AX, 0xAAAA
+    harness.step(); // MOV CX, 0x5555
+    harness.step(); // XOR AX, CX (opcode 0x33, ModR/M 0xC1)
+
+    assert_eq!(harness.cpu.regs[0], 0xFFFF); // AX = 0xFFFF
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // CF should be clear
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::OF)); // OF should be clear
+}
+
+#[test]
+fn test_xor_rm_r_byte() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0xAA; MOV CL, 0x55; XOR CL, AL
+    harness.load_program(&[0xB0, 0xAA, 0xB1, 0x55, 0x30, 0xC1], 0);
+
+    harness.step(); // MOV AL, 0xAA
+    harness.step(); // MOV CL, 0x55
+    harness.step(); // XOR CL, AL (opcode 0x30, ModR/M 0xC1)
+
+    assert_eq!(harness.cpu.read_reg8(1), 0xFF); // CL = 0xFF
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // CF should be clear
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::OF)); // OF should be clear
+}
+
+#[test]
+fn test_xor_rm_r_word() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0xAAAA; MOV CX, 0x5555; XOR CX, AX
+    harness.load_program(&[0xB8, 0xAA, 0xAA, 0xB9, 0x55, 0x55, 0x31, 0xC1], 0);
+
+    harness.step(); // MOV AX, 0xAAAA
+    harness.step(); // MOV CX, 0x5555
+    harness.step(); // XOR CX, AX (opcode 0x31, ModR/M 0xC1)
+
+    assert_eq!(harness.cpu.regs[1], 0xFFFF); // CX = 0xFFFF
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // CF should be clear
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::OF)); // OF should be clear
+}

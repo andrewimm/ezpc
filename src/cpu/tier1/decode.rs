@@ -210,6 +210,36 @@ impl Cpu {
                     .with_length(3);
             }
 
+            // XOR r/m, r (0x30, 0x31)
+            0x30 | 0x31 => {
+                let is_byte = opcode == 0x30;
+                let (dst, src, len) = self.decode_modrm_operands(mem, is_byte);
+                instr = instr.with_dst(dst).with_src(src).with_length(1 + len);
+            }
+
+            // XOR r, r/m (0x32, 0x33)
+            0x32 | 0x33 => {
+                let is_byte = opcode == 0x32;
+                let (src, dst, len) = self.decode_modrm_operands(mem, is_byte);
+                instr = instr.with_dst(dst).with_src(src).with_length(1 + len);
+            }
+
+            // XOR AL/AX, imm (0x34, 0x35)
+            0x34 => {
+                let imm = self.fetch_u8(mem);
+                instr = instr
+                    .with_dst(Operand::reg8(0)) // AL
+                    .with_src(Operand::imm8(imm))
+                    .with_length(2);
+            }
+            0x35 => {
+                let imm = self.fetch_u16(mem);
+                instr = instr
+                    .with_dst(Operand::reg16(0)) // AX
+                    .with_src(Operand::imm16(imm))
+                    .with_length(3);
+            }
+
             // JMP short (0xEB)
             0xEB => {
                 let rel8 = self.fetch_u8(mem) as i8 as i16 as u16;
