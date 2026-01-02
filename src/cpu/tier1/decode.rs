@@ -108,6 +108,18 @@ impl Cpu {
                 instr = instr.with_dst(Operand::reg16(reg)).with_length(1);
             }
 
+            // PUSH ES (0x06), PUSH CS (0x0E), PUSH SS (0x16), PUSH DS (0x1E)
+            0x06 | 0x0E | 0x16 | 0x1E => {
+                let seg = (opcode >> 3) & 0x03; // Extract segment index
+                instr = instr.with_src(Operand::seg(seg)).with_length(1);
+            }
+
+            // POP ES (0x07), POP SS (0x17), POP DS (0x1F)
+            0x07 | 0x17 | 0x1F => {
+                let seg = (opcode >> 3) & 0x03; // Extract segment index
+                instr = instr.with_dst(Operand::seg(seg)).with_length(1);
+            }
+
             // INC r16 (0x40-0x47)
             0x40..=0x47 => {
                 let reg = opcode & 0x07;

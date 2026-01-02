@@ -17,33 +17,33 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     arithmetic::add_r_rm,    // 0x03: ADD r16, r/m16
     arithmetic::add_acc_imm, // 0x04: ADD AL, imm8
     arithmetic::add_acc_imm, // 0x05: ADD AX, imm16
-    invalid_opcode,          // 0x06: PUSH ES (not implemented yet)
-    invalid_opcode,          // 0x07: POP ES (not implemented yet)
+    stack::push_seg,         // 0x06: PUSH ES
+    stack::pop_seg,          // 0x07: POP ES
     logic::or_rm_r,          // 0x08: OR r/m8, r8
     logic::or_rm_r,          // 0x09: OR r/m16, r16
     logic::or_r_rm,          // 0x0A: OR r8, r/m8
     logic::or_r_rm,          // 0x0B: OR r16, r/m16
     logic::or_acc_imm,       // 0x0C: OR AL, imm8
     logic::or_acc_imm,       // 0x0D: OR AX, imm16
-    invalid_opcode,          // 0x0E: PUSH CS (not implemented yet)
+    stack::push_seg,         // 0x0E: PUSH CS
     invalid_opcode,          // 0x0F: (two-byte escape on 80186+, invalid on 8088)
     // 0x10-0x1F: ADC, SBB, and segment prefixes
-    invalid_opcode, // 0x10: ADC r/m8, r8 (not implemented yet)
-    invalid_opcode, // 0x11: ADC r/m16, r16 (not implemented yet)
-    invalid_opcode, // 0x12: ADC r8, r/m8 (not implemented yet)
-    invalid_opcode, // 0x13: ADC r16, r/m16 (not implemented yet)
-    invalid_opcode, // 0x14: ADC AL, imm8 (not implemented yet)
-    invalid_opcode, // 0x15: ADC AX, imm16 (not implemented yet)
-    invalid_opcode, // 0x16: PUSH SS (not implemented yet)
-    invalid_opcode, // 0x17: POP SS (not implemented yet)
-    invalid_opcode, // 0x18: SBB r/m8, r8 (not implemented yet)
-    invalid_opcode, // 0x19: SBB r/m16, r16 (not implemented yet)
-    invalid_opcode, // 0x1A: SBB r8, r/m8 (not implemented yet)
-    invalid_opcode, // 0x1B: SBB r16, r/m16 (not implemented yet)
-    invalid_opcode, // 0x1C: SBB AL, imm8 (not implemented yet)
-    invalid_opcode, // 0x1D: SBB AX, imm16 (not implemented yet)
-    invalid_opcode, // 0x1E: PUSH DS (not implemented yet)
-    invalid_opcode, // 0x1F: POP DS (not implemented yet)
+    invalid_opcode,  // 0x10: ADC r/m8, r8 (not implemented yet)
+    invalid_opcode,  // 0x11: ADC r/m16, r16 (not implemented yet)
+    invalid_opcode,  // 0x12: ADC r8, r/m8 (not implemented yet)
+    invalid_opcode,  // 0x13: ADC r16, r/m16 (not implemented yet)
+    invalid_opcode,  // 0x14: ADC AL, imm8 (not implemented yet)
+    invalid_opcode,  // 0x15: ADC AX, imm16 (not implemented yet)
+    stack::push_seg, // 0x16: PUSH SS
+    stack::pop_seg,  // 0x17: POP SS
+    invalid_opcode,  // 0x18: SBB r/m8, r8 (not implemented yet)
+    invalid_opcode,  // 0x19: SBB r/m16, r16 (not implemented yet)
+    invalid_opcode,  // 0x1A: SBB r8, r/m8 (not implemented yet)
+    invalid_opcode,  // 0x1B: SBB r16, r/m16 (not implemented yet)
+    invalid_opcode,  // 0x1C: SBB AL, imm8 (not implemented yet)
+    invalid_opcode,  // 0x1D: SBB AX, imm16 (not implemented yet)
+    stack::push_seg, // 0x1E: PUSH DS
+    stack::pop_seg,  // 0x1F: POP DS
     // 0x20-0x2F: AND, SUB
     logic::and_rm_r,    // 0x20: AND r/m8, r8
     logic::and_rm_r,    // 0x21: AND r/m16, r16
