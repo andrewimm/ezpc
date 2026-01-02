@@ -19,12 +19,12 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     arithmetic::add_acc_imm, // 0x05: ADD AX, imm16
     invalid_opcode,          // 0x06: PUSH ES (not implemented yet)
     invalid_opcode,          // 0x07: POP ES (not implemented yet)
-    invalid_opcode,          // 0x08: OR r/m8, r8 (not implemented yet)
-    invalid_opcode,          // 0x09: OR r/m16, r16 (not implemented yet)
-    invalid_opcode,          // 0x0A: OR r8, r/m8 (not implemented yet)
-    invalid_opcode,          // 0x0B: OR r16, r/m16 (not implemented yet)
-    invalid_opcode,          // 0x0C: OR AL, imm8 (not implemented yet)
-    invalid_opcode,          // 0x0D: OR AX, imm16 (not implemented yet)
+    logic::or_rm_r,          // 0x08: OR r/m8, r8
+    logic::or_rm_r,          // 0x09: OR r/m16, r16
+    logic::or_r_rm,          // 0x0A: OR r8, r/m8
+    logic::or_r_rm,          // 0x0B: OR r16, r/m16
+    logic::or_acc_imm,       // 0x0C: OR AL, imm8
+    logic::or_acc_imm,       // 0x0D: OR AX, imm16
     invalid_opcode,          // 0x0E: PUSH CS (not implemented yet)
     invalid_opcode,          // 0x0F: (two-byte escape on 80186+, invalid on 8088)
     // 0x10-0x1F: ADC, SBB, and segment prefixes

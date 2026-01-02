@@ -134,6 +134,36 @@ impl Cpu {
                 instr = instr.with_dst(dst).with_src(src).with_length(1 + len);
             }
 
+            // OR r/m, r (0x08, 0x09)
+            0x08 | 0x09 => {
+                let is_byte = opcode == 0x08;
+                let (dst, src, len) = self.decode_modrm_operands(mem, is_byte);
+                instr = instr.with_dst(dst).with_src(src).with_length(1 + len);
+            }
+
+            // OR r, r/m (0x0A, 0x0B)
+            0x0A | 0x0B => {
+                let is_byte = opcode == 0x0A;
+                let (src, dst, len) = self.decode_modrm_operands(mem, is_byte);
+                instr = instr.with_dst(dst).with_src(src).with_length(1 + len);
+            }
+
+            // OR AL/AX, imm (0x0C, 0x0D)
+            0x0C => {
+                let imm = self.fetch_u8(mem);
+                instr = instr
+                    .with_dst(Operand::reg8(0)) // AL
+                    .with_src(Operand::imm8(imm))
+                    .with_length(2);
+            }
+            0x0D => {
+                let imm = self.fetch_u16(mem);
+                instr = instr
+                    .with_dst(Operand::reg16(0)) // AX
+                    .with_src(Operand::imm16(imm))
+                    .with_length(3);
+            }
+
             // ADD AL/AX, imm (0x04, 0x05)
             0x04 => {
                 let imm = self.fetch_u8(mem);
