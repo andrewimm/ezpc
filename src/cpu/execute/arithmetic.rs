@@ -180,3 +180,165 @@ pub fn dec_rm(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
         cpu.set_lazy_flags(result as u32, FlagOp::Dec16);
     }
 }
+
+/// SUB r/m, r - Subtract register from register/memory
+/// Handles both byte (0x28) and word (0x29) variants
+///
+/// Flags affected: CF, PF, AF, ZF, SF, OF
+pub fn sub_rm_r(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    let dst_value = cpu.read_operand(mem, &instr.dst);
+    let src_value = cpu.read_operand(mem, &instr.src);
+
+    let is_byte = instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
+
+    if is_byte {
+        let dst8 = dst_value as u8;
+        let src8 = src_value as u8;
+        let result = (dst8 as u32).wrapping_sub(src8 as u32);
+        cpu.write_operand(mem, &instr.dst, (result & 0xFF) as u16);
+        cpu.set_sub8_of_af(dst8, src8, result);
+        cpu.set_lazy_flags(result, FlagOp::Sub8);
+    } else {
+        let dst16 = dst_value;
+        let src16 = src_value;
+        let result = (dst16 as u32).wrapping_sub(src16 as u32);
+        cpu.write_operand(mem, &instr.dst, (result & 0xFFFF) as u16);
+        cpu.set_sub16_of_af(dst16, src16, result);
+        cpu.set_lazy_flags(result, FlagOp::Sub16);
+    }
+}
+
+/// SUB r, r/m - Subtract register/memory from register
+/// Handles both byte (0x2A) and word (0x2B) variants
+///
+/// Flags affected: CF, PF, AF, ZF, SF, OF
+pub fn sub_r_rm(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    let dst_value = cpu.read_operand(mem, &instr.dst);
+    let src_value = cpu.read_operand(mem, &instr.src);
+
+    let is_byte = instr.dst.op_type == OperandType::Reg8;
+
+    if is_byte {
+        let dst8 = dst_value as u8;
+        let src8 = src_value as u8;
+        let result = (dst8 as u32).wrapping_sub(src8 as u32);
+        cpu.write_operand(mem, &instr.dst, (result & 0xFF) as u16);
+        cpu.set_sub8_of_af(dst8, src8, result);
+        cpu.set_lazy_flags(result, FlagOp::Sub8);
+    } else {
+        let dst16 = dst_value;
+        let src16 = src_value;
+        let result = (dst16 as u32).wrapping_sub(src16 as u32);
+        cpu.write_operand(mem, &instr.dst, (result & 0xFFFF) as u16);
+        cpu.set_sub16_of_af(dst16, src16, result);
+        cpu.set_lazy_flags(result, FlagOp::Sub16);
+    }
+}
+
+/// SUB AL/AX, imm - Subtract immediate from AL or AX
+/// Handles byte (0x2C) and word (0x2D) variants
+///
+/// Flags affected: CF, PF, AF, ZF, SF, OF
+pub fn sub_acc_imm(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    let dst_value = cpu.read_operand(mem, &instr.dst);
+    let imm_value = cpu.read_operand(mem, &instr.src);
+
+    let is_byte = instr.dst.op_type == OperandType::Reg8;
+
+    if is_byte {
+        let dst8 = dst_value as u8;
+        let imm8 = imm_value as u8;
+        let result = (dst8 as u32).wrapping_sub(imm8 as u32);
+        cpu.write_operand(mem, &instr.dst, (result & 0xFF) as u16);
+        cpu.set_sub8_of_af(dst8, imm8, result);
+        cpu.set_lazy_flags(result, FlagOp::Sub8);
+    } else {
+        let dst16 = dst_value;
+        let imm16 = imm_value;
+        let result = (dst16 as u32).wrapping_sub(imm16 as u32);
+        cpu.write_operand(mem, &instr.dst, (result & 0xFFFF) as u16);
+        cpu.set_sub16_of_af(dst16, imm16, result);
+        cpu.set_lazy_flags(result, FlagOp::Sub16);
+    }
+}
+
+/// SUB r/m, imm - Subtract immediate from register/memory
+/// Handles byte (0x80 /5, 0x82 /5) and word (0x81 /5, 0x83 /5) variants
+///
+/// Flags affected: CF, PF, AF, ZF, SF, OF
+pub fn sub_rm_imm(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    let dst_value = cpu.read_operand(mem, &instr.dst);
+    let imm_value = cpu.read_operand(mem, &instr.src);
+
+    let is_byte = instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
+
+    if is_byte {
+        let dst8 = dst_value as u8;
+        let imm8 = imm_value as u8;
+        let result = (dst8 as u32).wrapping_sub(imm8 as u32);
+        cpu.write_operand(mem, &instr.dst, (result & 0xFF) as u16);
+        cpu.set_sub8_of_af(dst8, imm8, result);
+        cpu.set_lazy_flags(result, FlagOp::Sub8);
+    } else {
+        let dst16 = dst_value;
+        let imm16 = imm_value;
+        let result = (dst16 as u32).wrapping_sub(imm16 as u32);
+        cpu.write_operand(mem, &instr.dst, (result & 0xFFFF) as u16);
+        cpu.set_sub16_of_af(dst16, imm16, result);
+        cpu.set_lazy_flags(result, FlagOp::Sub16);
+    }
+}
+
+/// Group handler for opcode 0x80 and 0x82 - Arithmetic r/m8, imm8
+/// Dispatches to ADD, OR, ADC, SBB, AND, SUB, XOR, or CMP based on reg field
+pub fn group_80(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    let reg = (instr.dst.value >> 8) as u8; // High byte stores the reg field
+
+    match reg {
+        0 => add_rm_imm(cpu, mem, instr), // ADD r/m8, imm8
+        1 => panic!("OR r/m8, imm8 not implemented yet"),
+        2 => panic!("ADC r/m8, imm8 not implemented yet"),
+        3 => panic!("SBB r/m8, imm8 not implemented yet"),
+        4 => panic!("AND r/m8, imm8 not implemented yet"),
+        5 => sub_rm_imm(cpu, mem, instr), // SUB r/m8, imm8
+        6 => panic!("XOR r/m8, imm8 not implemented yet"),
+        7 => panic!("CMP r/m8, imm8 not implemented yet"),
+        _ => unreachable!(),
+    }
+}
+
+/// Group handler for opcode 0x81 - Arithmetic r/m16, imm16
+/// Dispatches to ADD, OR, ADC, SBB, AND, SUB, XOR, or CMP based on reg field
+pub fn group_81(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    let reg = (instr.dst.value >> 8) as u8;
+
+    match reg {
+        0 => add_rm_imm(cpu, mem, instr), // ADD r/m16, imm16
+        1 => panic!("OR r/m16, imm16 not implemented yet"),
+        2 => panic!("ADC r/m16, imm16 not implemented yet"),
+        3 => panic!("SBB r/m16, imm16 not implemented yet"),
+        4 => panic!("AND r/m16, imm16 not implemented yet"),
+        5 => sub_rm_imm(cpu, mem, instr), // SUB r/m16, imm16
+        6 => panic!("XOR r/m16, imm16 not implemented yet"),
+        7 => panic!("CMP r/m16, imm16 not implemented yet"),
+        _ => unreachable!(),
+    }
+}
+
+/// Group handler for opcode 0x83 - Arithmetic r/m16, imm8 (sign-extended)
+/// Dispatches to ADD, OR, ADC, SBB, AND, SUB, XOR, or CMP based on reg field
+pub fn group_83(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    let reg = (instr.dst.value >> 8) as u8;
+
+    match reg {
+        0 => add_rm_imm(cpu, mem, instr), // ADD r/m16, imm8 (sign-extended)
+        1 => panic!("OR r/m16, imm8 not implemented yet"),
+        2 => panic!("ADC r/m16, imm8 not implemented yet"),
+        3 => panic!("SBB r/m16, imm8 not implemented yet"),
+        4 => panic!("AND r/m16, imm8 not implemented yet"),
+        5 => sub_rm_imm(cpu, mem, instr), // SUB r/m16, imm8 (sign-extended)
+        6 => panic!("XOR r/m16, imm8 not implemented yet"),
+        7 => panic!("CMP r/m16, imm8 not implemented yet"),
+        _ => unreachable!(),
+    }
+}

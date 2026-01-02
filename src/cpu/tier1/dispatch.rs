@@ -45,22 +45,22 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     stack::push_seg, // 0x1E: PUSH DS
     stack::pop_seg,  // 0x1F: POP DS
     // 0x20-0x2F: AND, SUB
-    logic::and_rm_r,    // 0x20: AND r/m8, r8
-    logic::and_rm_r,    // 0x21: AND r/m16, r16
-    logic::and_r_rm,    // 0x22: AND r8, r/m8
-    logic::and_r_rm,    // 0x23: AND r16, r/m16
-    logic::and_acc_imm, // 0x24: AND AL, imm8
-    logic::and_acc_imm, // 0x25: AND AX, imm16
-    invalid_opcode,     // 0x26: ES segment prefix (not implemented yet)
-    invalid_opcode,     // 0x27: DAA (not implemented yet)
-    invalid_opcode,     // 0x28: SUB r/m8, r8 (not implemented yet)
-    invalid_opcode,     // 0x29: SUB r/m16, r16 (not implemented yet)
-    invalid_opcode,     // 0x2A: SUB r8, r/m8 (not implemented yet)
-    invalid_opcode,     // 0x2B: SUB r16, r/m16 (not implemented yet)
-    invalid_opcode,     // 0x2C: SUB AL, imm8 (not implemented yet)
-    invalid_opcode,     // 0x2D: SUB AX, imm16 (not implemented yet)
-    invalid_opcode,     // 0x2E: CS segment prefix (not implemented yet)
-    invalid_opcode,     // 0x2F: DAS (not implemented yet)
+    logic::and_rm_r,         // 0x20: AND r/m8, r8
+    logic::and_rm_r,         // 0x21: AND r/m16, r16
+    logic::and_r_rm,         // 0x22: AND r8, r/m8
+    logic::and_r_rm,         // 0x23: AND r16, r/m16
+    logic::and_acc_imm,      // 0x24: AND AL, imm8
+    logic::and_acc_imm,      // 0x25: AND AX, imm16
+    invalid_opcode,          // 0x26: ES segment prefix (not implemented yet)
+    invalid_opcode,          // 0x27: DAA (not implemented yet)
+    arithmetic::sub_rm_r,    // 0x28: SUB r/m8, r8
+    arithmetic::sub_rm_r,    // 0x29: SUB r/m16, r16
+    arithmetic::sub_r_rm,    // 0x2A: SUB r8, r/m8
+    arithmetic::sub_r_rm,    // 0x2B: SUB r16, r/m16
+    arithmetic::sub_acc_imm, // 0x2C: SUB AL, imm8
+    arithmetic::sub_acc_imm, // 0x2D: SUB AX, imm16
+    invalid_opcode,          // 0x2E: CS segment prefix (not implemented yet)
+    invalid_opcode,          // 0x2F: DAS (not implemented yet)
     // 0x30-0x3F: XOR, CMP
     logic::xor_rm_r,    // 0x30: XOR r/m8, r8
     logic::xor_rm_r,    // 0x31: XOR r/m16, r16
@@ -147,22 +147,22 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     control_flow::jle, // 0x7E: JLE/JNG
     control_flow::jg,  // 0x7F: JG/JNLE
     // 0x80-0x8F: Arithmetic and MOV instructions with immediate/ModR/M
-    invalid_opcode, // 0x80: Arithmetic r/m8, imm8 (group, not implemented yet)
-    invalid_opcode, // 0x81: Arithmetic r/m16, imm16 (group, not implemented yet)
-    invalid_opcode, // 0x82: Arithmetic r/m8, imm8 (alias of 0x80, not implemented yet)
-    invalid_opcode, // 0x83: Arithmetic r/m16, imm8 (sign-extended, not implemented yet)
-    invalid_opcode, // 0x84: TEST r/m8, r8 (not implemented yet)
-    invalid_opcode, // 0x85: TEST r/m16, r16 (not implemented yet)
+    arithmetic::group_80,     // 0x80: Arithmetic r/m8, imm8 (group)
+    arithmetic::group_81,     // 0x81: Arithmetic r/m16, imm16 (group)
+    arithmetic::group_80,     // 0x82: Arithmetic r/m8, imm8 (alias of 0x80)
+    arithmetic::group_83,     // 0x83: Arithmetic r/m16, imm8 (sign-extended, group)
+    invalid_opcode,           // 0x84: TEST r/m8, r8 (not implemented yet)
+    invalid_opcode,           // 0x85: TEST r/m16, r16 (not implemented yet)
     data_transfer::xchg_rm_r, // 0x86: XCHG r/m8, r8
     data_transfer::xchg_rm_r, // 0x87: XCHG r/m16, r16
-    data_transfer::mov_rm_r, // 0x88: MOV r/m8, r8
-    data_transfer::mov_rm_r, // 0x89: MOV r/m16, r16
-    data_transfer::mov_r_rm, // 0x8A: MOV r8, r/m8
-    data_transfer::mov_r_rm, // 0x8B: MOV r16, r/m16
-    invalid_opcode, // 0x8C: MOV r/m16, Sreg (not implemented yet)
-    invalid_opcode, // 0x8D: LEA r16, m (not implemented yet)
-    invalid_opcode, // 0x8E: MOV Sreg, r/m16 (not implemented yet)
-    invalid_opcode, // 0x8F: POP r/m16 (group, not implemented yet)
+    data_transfer::mov_rm_r,  // 0x88: MOV r/m8, r8
+    data_transfer::mov_rm_r,  // 0x89: MOV r/m16, r16
+    data_transfer::mov_r_rm,  // 0x8A: MOV r8, r/m8
+    data_transfer::mov_r_rm,  // 0x8B: MOV r16, r/m16
+    invalid_opcode,           // 0x8C: MOV r/m16, Sreg (not implemented yet)
+    invalid_opcode,           // 0x8D: LEA r16, m (not implemented yet)
+    invalid_opcode,           // 0x8E: MOV Sreg, r/m16 (not implemented yet)
+    invalid_opcode,           // 0x8F: POP r/m16 (group, not implemented yet)
     // 0x90-0x9F: XCHG, CBW, CWD, CALL, WAIT, PUSHF, POPF, SAHF, LAHF
     nop,                        // 0x90: NOP (XCHG AX, AX)
     data_transfer::xchg_ax_r16, // 0x91: XCHG AX, CX

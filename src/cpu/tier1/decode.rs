@@ -222,6 +222,36 @@ impl Cpu {
                     .with_length(3);
             }
 
+            // SUB r/m, r (0x28, 0x29)
+            0x28 | 0x29 => {
+                let is_byte = opcode == 0x28;
+                let (dst, src, len) = self.decode_modrm_operands(mem, is_byte);
+                instr = instr.with_dst(dst).with_src(src).with_length(1 + len);
+            }
+
+            // SUB r, r/m (0x2A, 0x2B)
+            0x2A | 0x2B => {
+                let is_byte = opcode == 0x2A;
+                let (src, dst, len) = self.decode_modrm_operands(mem, is_byte);
+                instr = instr.with_dst(dst).with_src(src).with_length(1 + len);
+            }
+
+            // SUB AL/AX, imm (0x2C, 0x2D)
+            0x2C => {
+                let imm = self.fetch_u8(mem);
+                instr = instr
+                    .with_dst(Operand::reg8(0)) // AL
+                    .with_src(Operand::imm8(imm))
+                    .with_length(2);
+            }
+            0x2D => {
+                let imm = self.fetch_u16(mem);
+                instr = instr
+                    .with_dst(Operand::reg16(0)) // AX
+                    .with_src(Operand::imm16(imm))
+                    .with_length(3);
+            }
+
             // XOR r/m, r (0x30, 0x31)
             0x30 | 0x31 => {
                 let is_byte = opcode == 0x30;
@@ -307,6 +337,59 @@ impl Cpu {
             0xCA => {
                 let imm = self.fetch_u16(mem);
                 instr = instr.with_src(Operand::imm16(imm)).with_length(3);
+            }
+
+            // Group 0x80/0x82: Arithmetic r/m8, imm8
+            0x80 | 0x82 => {
+                let modrm = self.fetch_u8(mem);
+                let reg = (modrm >> 3) & 0x07;
+                let (rm_operand, extra_len) = self.decode_rm_from_modrm_byte(mem, modrm, true);
+                let imm = self.fetch_u8(mem);
+
+                // Store reg field in high byte of dst.value for group handler to use
+                let mut dst_with_reg = rm_operand;
+                dst_with_reg.value = (dst_with_reg.value & 0xFF) | ((reg as u16) << 8);
+
+                instr = instr
+                    .with_dst(dst_with_reg)
+                    .with_src(Operand::imm8(imm))
+                    .with_length(1 + 1 + extra_len + 1);
+            }
+
+            // Group 0x81: Arithmetic r/m16, imm16
+            0x81 => {
+                let modrm = self.fetch_u8(mem);
+                let reg = (modrm >> 3) & 0x07;
+                let (rm_operand, extra_len) = self.decode_rm_from_modrm_byte(mem, modrm, false);
+                let imm = self.fetch_u16(mem);
+
+                // Store reg field in high byte of dst.value for group handler to use
+                let mut dst_with_reg = rm_operand;
+                dst_with_reg.value = (dst_with_reg.value & 0xFF) | ((reg as u16) << 8);
+
+                instr = instr
+                    .with_dst(dst_with_reg)
+                    .with_src(Operand::imm16(imm))
+                    .with_length(1 + 1 + extra_len + 2);
+            }
+
+            // Group 0x83: Arithmetic r/m16, imm8 (sign-extended)
+            0x83 => {
+                let modrm = self.fetch_u8(mem);
+                let reg = (modrm >> 3) & 0x07;
+                let (rm_operand, extra_len) = self.decode_rm_from_modrm_byte(mem, modrm, false);
+                let imm8 = self.fetch_u8(mem);
+                // Sign-extend imm8 to 16 bits
+                let imm16 = (imm8 as i8) as i16 as u16;
+
+                // Store reg field in high byte of dst.value for group handler to use
+                let mut dst_with_reg = rm_operand;
+                dst_with_reg.value = (dst_with_reg.value & 0xFF) | ((reg as u16) << 8);
+
+                instr = instr
+                    .with_dst(dst_with_reg)
+                    .with_src(Operand::imm16(imm16))
+                    .with_length(1 + 1 + extra_len + 1);
             }
 
             // Group 0xFF: INC/DEC/CALL/JMP/PUSH r/m16
