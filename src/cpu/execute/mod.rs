@@ -10,7 +10,9 @@ pub mod flags;
 pub mod handlers;
 pub mod io;
 pub mod logic;
+pub mod prefix;
 pub mod stack;
+pub mod string;
 
 // Re-export commonly used handlers
 pub use handlers::{invalid_opcode, nop};

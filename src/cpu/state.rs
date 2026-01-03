@@ -59,6 +59,26 @@ pub struct Cpu {
 
     /// Cycles spent filling prefetch queue
     prefetch_cycles: u16,
+
+    /// Segment override prefix (None or segment index 0-3 for ES/CS/SS/DS)
+    pub segment_override: Option<u8>,
+
+    /// Repeat prefix for string operations
+    pub repeat_prefix: RepeatPrefix,
+
+    /// IP of the repeat prefix byte (used to loop back for REP)
+    pub repeat_ip: u16,
+}
+
+/// Repeat prefix type for string operations
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum RepeatPrefix {
+    /// No repeat prefix
+    None,
+    /// REP/REPE prefix (0xF3) - repeat while ZF=1 (for CMPS/SCAS)
+    Rep,
+    /// REPNE prefix (0xF2) - repeat while ZF=0 (for CMPS/SCAS)
+    RepNe,
 }
 
 /// Operation type for lazy flag evaluation
@@ -100,6 +120,9 @@ impl Cpu {
             prefetch_queue: [0; 4],
             prefetch_len: 0,
             prefetch_cycles: 0,
+            segment_override: None,
+            repeat_prefix: RepeatPrefix::None,
+            repeat_ip: 0,
         }
     }
 
@@ -118,6 +141,9 @@ impl Cpu {
         self.prefetch_queue = [0; 4];
         self.prefetch_len = 0;
         self.prefetch_cycles = 0;
+        self.segment_override = None;
+        self.repeat_prefix = RepeatPrefix::None;
+        self.repeat_ip = 0;
     }
 
     // === Register Access Methods ===
@@ -909,23 +935,39 @@ impl Cpu {
     ///
     /// Fetches the opcode at CS:IP, decodes the instruction using tier 1
     /// decoding, and executes it. This is the cold path - no caching.
+    ///
+    /// Prefix bytes (segment overrides, REP) are handled by setting state
+    /// in their handlers. This function loops to consume all prefixes before
+    /// executing the actual instruction.
     pub fn step(&mut self, mem: &mut MemoryBus) {
         use crate::cpu::tier1::DISPATCH_TABLE;
 
-        // Fetch opcode
+        // Clear prefix state at start of instruction
+        self.segment_override = None;
+        self.repeat_prefix = RepeatPrefix::None;
+
         let cs = self.read_seg(1);
-        let opcode = self.read_mem8(mem, cs, self.ip);
 
-        // Advance IP past opcode
-        self.ip = self.ip.wrapping_add(1);
+        // Execute instruction, looping while prefix handlers set state
+        loop {
+            // Remember if we had prefix state set before this instruction
+            let had_seg_override = self.segment_override;
+            let had_repeat_prefix = self.repeat_prefix;
 
-        // Get handler from dispatch table
-        let handler = DISPATCH_TABLE[opcode as usize];
+            // Fetch and execute one opcode
+            let opcode = self.read_mem8(mem, cs, self.ip);
+            self.ip = self.ip.wrapping_add(1);
 
-        // Decode instruction using tier 1 decoder
-        let instr = self.decode_instruction_t1(mem, opcode, handler);
+            let handler = DISPATCH_TABLE[opcode as usize];
+            let instr = self.decode_instruction_t1(mem, opcode, handler);
+            instr.execute(self, mem);
 
-        // Execute the instruction
-        instr.execute(self, mem);
+            // If a prefix was set by this instruction, continue to fetch next byte
+            // Otherwise, we executed the actual instruction and we're done
+            if self.segment_override == had_seg_override && self.repeat_prefix == had_repeat_prefix
+            {
+                break;
+            }
+        }
     }
 }

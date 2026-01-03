@@ -51,7 +51,7 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     logic::and_r_rm,         // 0x23: AND r16, r/m16
     logic::and_acc_imm,      // 0x24: AND AL, imm8
     logic::and_acc_imm,      // 0x25: AND AX, imm16
-    invalid_opcode,          // 0x26: ES segment prefix (not implemented yet)
+    prefix::seg_es,          // 0x26: ES segment override prefix
     arithmetic::daa,         // 0x27: DAA
     arithmetic::sub_rm_r,    // 0x28: SUB r/m8, r8
     arithmetic::sub_rm_r,    // 0x29: SUB r/m16, r16
@@ -59,7 +59,7 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     arithmetic::sub_r_rm,    // 0x2B: SUB r16, r/m16
     arithmetic::sub_acc_imm, // 0x2C: SUB AL, imm8
     arithmetic::sub_acc_imm, // 0x2D: SUB AX, imm16
-    invalid_opcode,          // 0x2E: CS segment prefix (not implemented yet)
+    prefix::seg_cs,          // 0x2E: CS segment override prefix
     arithmetic::das,         // 0x2F: DAS
     // 0x30-0x3F: XOR, CMP
     logic::xor_rm_r,         // 0x30: XOR r/m8, r8
@@ -68,7 +68,7 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     logic::xor_r_rm,         // 0x33: XOR r16, r/m16
     logic::xor_acc_imm,      // 0x34: XOR AL, imm8
     logic::xor_acc_imm,      // 0x35: XOR AX, imm16
-    invalid_opcode,          // 0x36: SS segment prefix (not implemented yet)
+    prefix::seg_ss,          // 0x36: SS segment override prefix
     invalid_opcode,          // 0x37: AAA (not implemented yet)
     arithmetic::cmp_rm_r,    // 0x38: CMP r/m8, r8
     arithmetic::cmp_rm_r,    // 0x39: CMP r/m16, r16
@@ -76,7 +76,7 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     arithmetic::cmp_r_rm,    // 0x3B: CMP r16, r/m16
     arithmetic::cmp_acc_imm, // 0x3C: CMP AL, imm8
     arithmetic::cmp_acc_imm, // 0x3D: CMP AX, imm16
-    invalid_opcode,          // 0x3E: DS segment prefix (not implemented yet)
+    prefix::seg_ds,          // 0x3E: DS segment override prefix
     invalid_opcode,          // 0x3F: AAS (not implemented yet)
     // 0x40-0x4F: INC and DEC 16-bit registers
     arithmetic::inc_r16, // 0x40: INC AX
@@ -185,16 +185,16 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     invalid_opcode,      // 0xA1: MOV AX, moffs16 (not implemented yet)
     invalid_opcode,      // 0xA2: MOV moffs8, AL (not implemented yet)
     invalid_opcode,      // 0xA3: MOV moffs16, AX (not implemented yet)
-    invalid_opcode,      // 0xA4: MOVSB (not implemented yet)
-    invalid_opcode,      // 0xA5: MOVSW (not implemented yet)
+    string::movsb,       // 0xA4: MOVSB - Move byte from DS:SI to ES:DI
+    string::movsw,       // 0xA5: MOVSW - Move word from DS:SI to ES:DI
     invalid_opcode,      // 0xA6: CMPSB (not implemented yet)
     invalid_opcode,      // 0xA7: CMPSW (not implemented yet)
     logic::test_acc_imm, // 0xA8: TEST AL, imm8
     logic::test_acc_imm, // 0xA9: TEST AX, imm16
-    invalid_opcode,      // 0xAA: STOSB (not implemented yet)
-    invalid_opcode,      // 0xAB: STOSW (not implemented yet)
-    invalid_opcode,      // 0xAC: LODSB (not implemented yet)
-    invalid_opcode,      // 0xAD: LODSW (not implemented yet)
+    string::stosb,       // 0xAA: STOSB - Store AL to ES:DI
+    string::stosw,       // 0xAB: STOSW - Store AX to ES:DI
+    string::lodsb,       // 0xAC: LODSB - Load DS:SI into AL
+    string::lodsw,       // 0xAD: LODSW - Load DS:SI into AX
     invalid_opcode,      // 0xAE: SCASB (not implemented yet)
     invalid_opcode,      // 0xAF: SCASW (not implemented yet)
     // 0xB0-0xBF: MOV immediate to register
@@ -268,8 +268,8 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     // 0xF0-0xFF: LOCK, INT1, REP, HLT, CMC, and groups
     invalid_opcode,         // 0xF0: LOCK prefix (not implemented yet)
     invalid_opcode,         // 0xF1: INT1 (undocumented, not implemented)
-    invalid_opcode,         // 0xF2: REPNE/REPNZ prefix (not implemented yet)
-    invalid_opcode,         // 0xF3: REP/REPE/REPZ prefix (not implemented yet)
+    prefix::repne,          // 0xF2: REPNE/REPNZ prefix
+    prefix::rep,            // 0xF3: REP/REPE/REPZ prefix
     invalid_opcode,         // 0xF4: HLT (not implemented yet)
     invalid_opcode,         // 0xF5: CMC (not implemented yet)
     invalid_opcode, // 0xF6: TEST/NOT/NEG/MUL/IMUL/DIV/IDIV r/m8 (group, not implemented yet)
