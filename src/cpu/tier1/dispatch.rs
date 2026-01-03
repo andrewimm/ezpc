@@ -52,7 +52,7 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     logic::and_acc_imm,      // 0x24: AND AL, imm8
     logic::and_acc_imm,      // 0x25: AND AX, imm16
     invalid_opcode,          // 0x26: ES segment prefix (not implemented yet)
-    invalid_opcode,          // 0x27: DAA (not implemented yet)
+    arithmetic::daa,         // 0x27: DAA
     arithmetic::sub_rm_r,    // 0x28: SUB r/m8, r8
     arithmetic::sub_rm_r,    // 0x29: SUB r/m16, r16
     arithmetic::sub_r_rm,    // 0x2A: SUB r8, r/m8
