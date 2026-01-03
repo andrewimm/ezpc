@@ -43,6 +43,14 @@ impl Cpu {
                 instr = instr.with_dst(dst).with_src(src).with_length(1 + len);
             }
 
+            // LEA r16, m (0x8D)
+            0x8D => {
+                // LEA is always 16-bit (destination is always a 16-bit register)
+                // The source must be a memory operand (not a register)
+                let (src, dst, len) = self.decode_modrm_operands(mem, false);
+                instr = instr.with_dst(dst).with_src(src).with_length(1 + len);
+            }
+
             // XCHG r/m, r (0x86, 0x87)
             0x86 | 0x87 => {
                 let is_byte = opcode == 0x86;

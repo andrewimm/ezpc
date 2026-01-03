@@ -160,7 +160,7 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     data_transfer::mov_r_rm,  // 0x8A: MOV r8, r/m8
     data_transfer::mov_r_rm,  // 0x8B: MOV r16, r/m16
     invalid_opcode,           // 0x8C: MOV r/m16, Sreg (not implemented yet)
-    invalid_opcode,           // 0x8D: LEA r16, m (not implemented yet)
+    data_transfer::lea,       // 0x8D: LEA r16, m - Load Effective Address
     invalid_opcode,           // 0x8E: MOV Sreg, r/m16 (not implemented yet)
     invalid_opcode,           // 0x8F: POP r/m16 (group, not implemented yet)
     // 0x90-0x9F: XCHG, CBW, CWD, CALL, WAIT, PUSHF, POPF, SAHF, LAHF

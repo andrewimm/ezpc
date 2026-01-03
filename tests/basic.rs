@@ -77,3 +77,152 @@ fn test_xchg_ax_r16() {
     assert_eq!(harness.cpu.regs[0], 0x2222); // AX
     assert_eq!(harness.cpu.regs[1], 0x1111); // CX
 }
+
+#[test]
+fn test_lea_bx_si() {
+    let mut harness = CpuHarness::new();
+    // Set BX=0x1000, SI=0x0200
+    // LEA AX, [BX+SI]
+    harness.load_program(
+        &[
+            0xBB, 0x00, 0x10, // MOV BX, 0x1000
+            0xBE, 0x00, 0x02, // MOV SI, 0x0200
+            0x8D, 0x00, // LEA AX, [BX+SI] (ModR/M=00: AX, [BX+SI])
+        ],
+        0,
+    );
+
+    harness.step(); // MOV BX, 0x1000
+    harness.step(); // MOV SI, 0x0200
+    harness.step(); // LEA AX, [BX+SI]
+
+    // LEA should calculate BX+SI = 0x1000+0x0200 = 0x1200
+    assert_eq!(harness.cpu.regs[0], 0x1200); // AX
+}
+
+#[test]
+fn test_lea_bx_si_disp8() {
+    let mut harness = CpuHarness::new();
+    // Set BX=0x1000, SI=0x0200
+    // LEA DX, [BX+SI+0x50]
+    harness.load_program(
+        &[
+            0xBB, 0x00, 0x10, // MOV BX, 0x1000
+            0xBE, 0x00, 0x02, // MOV SI, 0x0200
+            0x8D, 0x50, 0x50, // LEA DX, [BX+SI+0x50] (ModR/M=50: DX, [BX+SI+disp8])
+        ],
+        0,
+    );
+
+    harness.step(); // MOV BX, 0x1000
+    harness.step(); // MOV SI, 0x0200
+    harness.step(); // LEA DX, [BX+SI+0x50]
+
+    // LEA should calculate BX+SI+0x50 = 0x1000+0x0200+0x50 = 0x1250
+    assert_eq!(harness.cpu.regs[2], 0x1250); // DX
+}
+
+#[test]
+fn test_lea_bx_si_disp16() {
+    let mut harness = CpuHarness::new();
+    // Set BX=0x1000, SI=0x0200
+    // LEA CX, [BX+SI+0x1234]
+    harness.load_program(
+        &[
+            0xBB, 0x00, 0x10, // MOV BX, 0x1000
+            0xBE, 0x00, 0x02, // MOV SI, 0x0200
+            0x8D, 0x88, 0x34, 0x12, // LEA CX, [BX+SI+0x1234] (ModR/M=88: CX, [BX+SI+disp16])
+        ],
+        0,
+    );
+
+    harness.step(); // MOV BX, 0x1000
+    harness.step(); // MOV SI, 0x0200
+    harness.step(); // LEA CX, [BX+SI+0x1234]
+
+    // LEA should calculate BX+SI+0x1234 = 0x1000+0x0200+0x1234 = 0x2434
+    assert_eq!(harness.cpu.regs[1], 0x2434); // CX
+}
+
+#[test]
+fn test_lea_direct_address() {
+    let mut harness = CpuHarness::new();
+    // LEA AX, [0x5678]
+    harness.load_program(
+        &[
+            0x8D, 0x06, 0x78, 0x56, // LEA AX, [0x5678] (ModR/M=06: AX, direct address)
+        ],
+        0,
+    );
+
+    harness.step(); // LEA AX, [0x5678]
+
+    // LEA should load the address 0x5678 into AX
+    assert_eq!(harness.cpu.regs[0], 0x5678); // AX
+}
+
+#[test]
+fn test_lea_bp_di() {
+    let mut harness = CpuHarness::new();
+    // Set BP=0x2000, DI=0x0100
+    // LEA BX, [BP+DI]
+    harness.load_program(
+        &[
+            0xBD, 0x00, 0x20, // MOV BP, 0x2000
+            0xBF, 0x00, 0x01, // MOV DI, 0x0100
+            0x8D, 0x1B, // LEA BX, [BP+DI] (ModR/M=1B: BX, [BP+DI])
+        ],
+        0,
+    );
+
+    harness.step(); // MOV BP, 0x2000
+    harness.step(); // MOV DI, 0x0100
+    harness.step(); // LEA BX, [BP+DI]
+
+    // LEA should calculate BP+DI = 0x2000+0x0100 = 0x2100
+    assert_eq!(harness.cpu.regs[3], 0x2100); // BX
+}
+
+#[test]
+fn test_lea_si_only() {
+    let mut harness = CpuHarness::new();
+    // Set SI=0x1234
+    // LEA AX, [SI]
+    harness.load_program(
+        &[
+            0xBE, 0x34, 0x12, // MOV SI, 0x1234
+            0x8D, 0x04, // LEA AX, [SI] (ModR/M=04: AX, [SI])
+        ],
+        0,
+    );
+
+    harness.step(); // MOV SI, 0x1234
+    harness.step(); // LEA AX, [SI]
+
+    // LEA should load SI = 0x1234 into AX
+    assert_eq!(harness.cpu.regs[0], 0x1234); // AX
+}
+
+#[test]
+fn test_lea_pointer_arithmetic() {
+    let mut harness = CpuHarness::new();
+    // Common use case: calculate address of array element
+    // Base address in BX=0x1000, index in SI=3, element size=2
+    // LEA AX, [BX+SI*1+6] (simulating array[3] with 2-byte elements)
+    // Since 8088 doesn't have scaled indexing, we pre-multiply: SI=6
+    harness.load_program(
+        &[
+            0xBB, 0x00, 0x10, // MOV BX, 0x1000 (base address)
+            0xBE, 0x06, 0x00, // MOV SI, 0x0006 (3 * 2 = 6)
+            0x8D, 0x00, // LEA AX, [BX+SI]
+        ],
+        0,
+    );
+
+    harness.step(); // MOV BX, 0x1000
+    harness.step(); // MOV SI, 0x0006
+    harness.step(); // LEA AX, [BX+SI]
+
+    // LEA should calculate 0x1000+0x0006 = 0x1006
+    assert_eq!(harness.cpu.regs[0], 0x1006); // AX
+}

@@ -62,3 +62,46 @@ pub fn xchg_ax_r16(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstructio
     cpu.write_reg16(0, r_value);
     cpu.write_operand(mem, &instr.dst, ax_value);
 }
+
+/// LEA r16, m - Load Effective Address
+/// Opcode: 0x8D
+///
+/// Calculates the effective address of the memory operand and loads it into
+/// the destination register. Unlike MOV, this does NOT access memory - it just
+/// calculates the offset portion of the address.
+///
+/// This instruction is commonly used for pointer arithmetic and address calculations.
+/// No flags are affected.
+pub fn lea(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    use crate::cpu::decode::OperandType;
+
+    // LEA requires a memory operand as source
+    // We need to calculate the effective address (offset) without accessing memory
+    match instr.src.op_type {
+        OperandType::Mem8 | OperandType::Mem16 => {
+            // Check if this is direct addressing or indirect addressing
+            // Direct addressing: value field contains full 16-bit address (> 7)
+            // Indirect addressing: value field contains base_index (0-7)
+            let ea = if instr.src.value > 7 {
+                // Direct addressing [disp16]: value contains the address directly
+                instr.src.value
+            } else {
+                // Indirect addressing [BX+SI], etc.: calculate EA
+                let base_index = instr.src.value as u8;
+                let (_seg_idx, ea) = cpu.calculate_ea_from_operand(&instr.src, base_index);
+                ea
+            };
+
+            // Store the effective address (offset) in the destination register
+            cpu.write_operand(_mem, &instr.dst, ea);
+        }
+        OperandType::Direct => {
+            // Direct addressing: just use the offset directly
+            cpu.write_operand(_mem, &instr.dst, instr.src.value);
+        }
+        _ => {
+            // LEA with register operand is invalid (though some assemblers allow it)
+            panic!("LEA requires a memory operand");
+        }
+    }
+}
