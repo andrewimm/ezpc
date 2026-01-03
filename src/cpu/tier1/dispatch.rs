@@ -60,7 +60,7 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     arithmetic::sub_acc_imm, // 0x2C: SUB AL, imm8
     arithmetic::sub_acc_imm, // 0x2D: SUB AX, imm16
     invalid_opcode,          // 0x2E: CS segment prefix (not implemented yet)
-    invalid_opcode,          // 0x2F: DAS (not implemented yet)
+    arithmetic::das,         // 0x2F: DAS
     // 0x30-0x3F: XOR, CMP
     logic::xor_rm_r,         // 0x30: XOR r/m8, r8
     logic::xor_rm_r,         // 0x31: XOR r/m16, r16

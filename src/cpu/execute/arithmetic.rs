@@ -767,3 +767,76 @@ pub fn daa(cpu: &mut Cpu, _mem: &mut MemoryBus, _instr: &DecodedInstruction) {
 
     cpu.set_flags(flags);
 }
+
+/// DAS - Decimal Adjust After Subtraction
+/// Opcode: 0x2F
+///
+/// Adjusts AL after a binary subtraction to maintain BCD (Binary Coded Decimal) format.
+/// This instruction is used after subtracting two packed BCD values.
+///
+/// Algorithm:
+/// 1. If ((AL & 0x0F) > 9) OR (AF == 1):
+///    - AL = AL - 6
+///    - AF = 1
+/// 2. If (old_AL > 0x99) OR (old_CF == 1):
+///    - AL = AL - 0x60
+///    - CF = 1
+///
+/// Flags affected: SF, ZF, PF, CF, AF (OF is undefined)
+pub fn das(cpu: &mut Cpu, _mem: &mut MemoryBus, _instr: &DecodedInstruction) {
+    let mut al = cpu.read_reg8(0); // Read AL
+    let old_al = al;
+    let old_cf = cpu.get_flag(Cpu::CF);
+    let old_af = cpu.get_flag(Cpu::AF);
+
+    // Step 1: Adjust low nibble if needed
+    let new_af = if (al & 0x0F) > 9 || old_af {
+        al = al.wrapping_sub(6);
+        true
+    } else {
+        false
+    };
+
+    // Step 2: Adjust high nibble if needed
+    let new_cf = if old_al > 0x99 || old_cf {
+        al = al.wrapping_sub(0x60);
+        true
+    } else {
+        false
+    };
+
+    // Write result back to AL
+    cpu.write_reg8(0, al);
+
+    // Manually set flags instead of using lazy evaluation
+    // to avoid overwriting CF and AF
+    let mut flags = cpu.get_flags();
+
+    // Clear flags we're about to set
+    flags &= !(Cpu::SF | Cpu::ZF | Cpu::PF | Cpu::CF | Cpu::AF);
+
+    // Set SF (sign flag) if bit 7 is set
+    if al & 0x80 != 0 {
+        flags |= Cpu::SF;
+    }
+
+    // Set ZF (zero flag) if result is zero
+    if al == 0 {
+        flags |= Cpu::ZF;
+    }
+
+    // Set PF (parity flag) if even number of 1 bits in low byte
+    if al.count_ones() % 2 == 0 {
+        flags |= Cpu::PF;
+    }
+
+    // Set CF and AF as computed above
+    if new_cf {
+        flags |= Cpu::CF;
+    }
+    if new_af {
+        flags |= Cpu::AF;
+    }
+
+    cpu.set_flags(flags);
+}

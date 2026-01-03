@@ -1181,3 +1181,274 @@ fn test_daa_multi_digit_bcd_addition() {
     assert_eq!(harness.cpu.read_reg8(0), 0x04);
     assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), true);
 }
+
+// DAS (Decimal Adjust After Subtraction) tests
+
+#[test]
+fn test_das_no_adjustment() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x45; DAS (both nibbles are valid BCD, no adjustment needed)
+    harness.load_program(&[0xB0, 0x45, 0x2F], 0);
+
+    harness.step(); // MOV AL, 0x45
+    harness.step(); // DAS
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x45); // AL unchanged
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false);
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::AF), false);
+}
+
+#[test]
+fn test_das_low_nibble_adjustment() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x1F; DAS (low nibble > 9, subtract 6)
+    // Expected: 0x1F - 0x06 = 0x19
+    harness.load_program(&[0xB0, 0x1F, 0x2F], 0);
+
+    harness.step(); // MOV AL, 0x1F
+    harness.step(); // DAS
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x19); // AL = 0x1F - 6 = 0x19
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false);
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::AF), true);
+}
+
+#[test]
+fn test_das_high_nibble_adjustment() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0xA5; DAS (high nibble > 9, subtract 0x60)
+    // Expected: 0xA5 - 0x60 = 0x45, CF = 1
+    harness.load_program(&[0xB0, 0xA5, 0x2F], 0);
+
+    harness.step(); // MOV AL, 0xA5
+    harness.step(); // DAS
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x45); // AL = 0xA5 - 0x60 = 0x45
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), true);
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::AF), false);
+}
+
+#[test]
+fn test_das_both_nibbles_adjustment() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0xAF; DAS (both nibbles > 9)
+    // Expected: 0xAF - 0x06 = 0xA9, then 0xA9 - 0x60 = 0x49, CF = 1
+    harness.load_program(&[0xB0, 0xAF, 0x2F], 0);
+
+    harness.step(); // MOV AL, 0xAF
+    harness.step(); // DAS
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x49); // AL = 0xAF - 6 - 0x60 = 0x49
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), true);
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::AF), true);
+}
+
+#[test]
+fn test_das_with_af_set() {
+    let mut harness = CpuHarness::new();
+    // Set up a scenario where AF is already set
+    // MOV AL, 0x10; SUB AL, 0x01 (sets AF); DAS
+    // After SUB: AL = 0x0F, AF = 1
+    // DAS should subtract 6 because AF is set
+    harness.load_program(&[0xB0, 0x10, 0x2C, 0x01, 0x2F], 0);
+
+    harness.step(); // MOV AL, 0x10
+    harness.step(); // SUB AL, 0x01 (AL = 0x0F, AF = 1 because 0 - 1 caused borrow from bit 4)
+
+    // Verify AF is set after SUB
+    assert_eq!(harness.cpu.read_reg8(0), 0x0F);
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::AF));
+
+    harness.step(); // DAS
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x09); // AL = 0x0F - 6 = 0x09
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false);
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::AF), true);
+}
+
+#[test]
+fn test_das_with_cf_set() {
+    let mut harness = CpuHarness::new();
+    // Set up a scenario where CF is already set
+    // MOV AL, 0x00; SUB AL, 0x01 (sets CF and AF); DAS
+    // After SUB: AL = 0xFF, CF = 1, AF = 1
+    // DAS subtracts 6 (due to AF) + 0x60 (due to CF) = 0x66
+    harness.load_program(&[0xB0, 0x00, 0x2C, 0x01, 0x2F], 0);
+
+    harness.step(); // MOV AL, 0x00
+    harness.step(); // SUB AL, 0x01 (AL = 0xFF, CF = 1, AF = 1)
+
+    // Verify CF and AF are set after SUB
+    assert_eq!(harness.cpu.read_reg8(0), 0xFF);
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF));
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::AF));
+
+    harness.step(); // DAS
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x99); // AL = 0xFF - 6 - 0x60 = 0x99
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), true);
+}
+
+#[test]
+fn test_das_bcd_subtraction_example() {
+    let mut harness = CpuHarness::new();
+    // Classic BCD example: 0x25 - 0x08 = 0x1D, DAS -> 0x17 (representing 17 in BCD)
+    // MOV AL, 0x25; SUB AL, 0x08; DAS
+    harness.load_program(&[0xB0, 0x25, 0x2C, 0x08, 0x2F], 0);
+
+    harness.step(); // MOV AL, 0x25
+    harness.step(); // SUB AL, 0x08 (AL = 0x1D, AF = 1)
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x1D);
+
+    harness.step(); // DAS
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x17); // Correct BCD result
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false);
+}
+
+#[test]
+fn test_das_bcd_subtraction_with_borrow() {
+    let mut harness = CpuHarness::new();
+    // BCD example with borrow: 0x02 - 0x05 = 0xFD, DAS -> 0x97, CF = 1
+    // MOV AL, 0x02; SUB AL, 0x05; DAS
+    harness.load_program(&[0xB0, 0x02, 0x2C, 0x05, 0x2F], 0);
+
+    harness.step(); // MOV AL, 0x02
+    harness.step(); // SUB AL, 0x05 (AL = 0xFD, CF = 1, AF = 1)
+
+    assert_eq!(harness.cpu.read_reg8(0), 0xFD);
+
+    harness.step(); // DAS
+
+    // 0xFD: low nibble D > 9, subtract 6 -> 0xF7
+    // old_AL = 0xFD > 0x99, subtract 0x60 -> 0x97, CF = 1
+    assert_eq!(harness.cpu.read_reg8(0), 0x97); // BCD borrow
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), true);
+}
+
+#[test]
+fn test_das_flags_zero() {
+    let mut harness = CpuHarness::new();
+    // Test that ZF is set when result is zero
+    // MOV AL, 0x66; DAS (should produce 0x00 with ZF = 1)
+    harness.load_program(&[0xB0, 0x66, 0x2F], 0);
+
+    harness.step(); // MOV AL, 0x66
+    harness.step(); // DAS (0x66 - 0x66 = 0x00)
+
+    // 0x66: low nibble = 6, no adjustment
+    // high nibble = 6, no adjustment
+    // Actually, this won't produce zero. Let me reconsider.
+    // For zero, we need AL = 0x00 after DAS with no adjustments
+    assert_eq!(harness.cpu.read_reg8(0), 0x66); // No adjustment
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF), false);
+}
+
+#[test]
+fn test_das_flags_zero_actual() {
+    let mut harness = CpuHarness::new();
+    // Test that ZF is set when result is zero
+    // MOV AL, 0x00; DAS
+    harness.load_program(&[0xB0, 0x00, 0x2F], 0);
+
+    harness.step(); // MOV AL, 0x00
+    harness.step(); // DAS
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x00);
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF), true);
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false);
+}
+
+#[test]
+fn test_das_flags_sign() {
+    let mut harness = CpuHarness::new();
+    // Test that SF is set when result has bit 7 set
+    // MOV AL, 0x8A; DAS (should produce 0x84, SF = 1)
+    harness.load_program(&[0xB0, 0x8A, 0x2F], 0);
+
+    harness.step(); // MOV AL, 0x8A
+    harness.step(); // DAS (0x8A: low nibble A > 9, subtract 6 -> 0x84)
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x84);
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::SF), true); // Sign flag set
+}
+
+#[test]
+fn test_das_flags_parity() {
+    let mut harness = CpuHarness::new();
+    // Test parity flag - result with even number of 1 bits sets PF
+    // MOV AL, 0x03; DAS (result = 0x03, binary 0000_0011, 2 ones = even parity)
+    harness.load_program(&[0xB0, 0x03, 0x2F], 0);
+
+    harness.step(); // MOV AL, 0x03
+    harness.step(); // DAS
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x03);
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::PF), true); // Even parity
+}
+
+#[test]
+fn test_das_edge_case_0x99() {
+    let mut harness = CpuHarness::new();
+    // Edge case: 0x99 (max valid BCD)
+    // MOV AL, 0x99; DAS
+    harness.load_program(&[0xB0, 0x99, 0x2F], 0);
+
+    harness.step(); // MOV AL, 0x99
+    harness.step(); // DAS
+
+    // 0x99: low nibble = 9 (OK), high nibble = 9 (OK), no adjustment
+    assert_eq!(harness.cpu.read_reg8(0), 0x99);
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false);
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::AF), false);
+}
+
+#[test]
+fn test_das_edge_case_0xa0() {
+    let mut harness = CpuHarness::new();
+    // Edge case: 0xA0 (high nibble > 9, low nibble = 0)
+    // MOV AL, 0xA0; DAS
+    harness.load_program(&[0xB0, 0xA0, 0x2F], 0);
+
+    harness.step(); // MOV AL, 0xA0
+    harness.step(); // DAS
+
+    // 0xA0 - 0x60 = 0x40, CF = 1
+    assert_eq!(harness.cpu.read_reg8(0), 0x40);
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), true);
+}
+
+#[test]
+fn test_das_low_nibble_equals_10() {
+    let mut harness = CpuHarness::new();
+    // Low nibble = 0xA (10), should trigger adjustment
+    // MOV AL, 0x0A; DAS
+    harness.load_program(&[0xB0, 0x0A, 0x2F], 0);
+
+    harness.step(); // MOV AL, 0x0A
+    harness.step(); // DAS
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x04); // 0x0A - 6 = 0x04
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::AF), true);
+}
+
+#[test]
+fn test_das_multi_digit_bcd_subtraction() {
+    let mut harness = CpuHarness::new();
+    // Multi-digit BCD: 64 - 27 = 37 in decimal
+    // In BCD: 0x64 - 0x27 = 0x3D, DAS -> 0x37
+    // MOV AL, 0x64; SUB AL, 0x27; DAS
+    harness.load_program(&[0xB0, 0x64, 0x2C, 0x27, 0x2F], 0);
+
+    harness.step(); // MOV AL, 0x64
+    harness.step(); // SUB AL, 0x27 (AL = 0x3D, AF = 1)
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x3D);
+
+    harness.step(); // DAS
+
+    // 0x3D: low nibble D > 9, subtract 6 -> 0x37
+    assert_eq!(harness.cpu.read_reg8(0), 0x37);
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false);
+}
