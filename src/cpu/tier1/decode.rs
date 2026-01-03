@@ -495,6 +495,40 @@ impl Cpu {
                 instr = instr.with_dst(dst_with_reg).with_length(1 + 1 + extra_len);
             }
 
+            // IN AL, imm8 (0xE4)
+            0xE4 => {
+                let port = self.fetch_u8(mem);
+                instr = instr.with_src(Operand::imm8(port)).with_length(2);
+            }
+
+            // IN AX, imm8 (0xE5)
+            0xE5 => {
+                let port = self.fetch_u8(mem);
+                instr = instr.with_src(Operand::imm8(port)).with_length(2);
+            }
+
+            // OUT imm8, AL (0xE6)
+            0xE6 => {
+                let port = self.fetch_u8(mem);
+                instr = instr.with_dst(Operand::imm8(port)).with_length(2);
+            }
+
+            // OUT imm8, AX (0xE7)
+            0xE7 => {
+                let port = self.fetch_u8(mem);
+                instr = instr.with_dst(Operand::imm8(port)).with_length(2);
+            }
+
+            // IN AL, DX (0xEC)
+            // IN AX, DX (0xED)
+            // OUT DX, AL (0xEE)
+            // OUT DX, AX (0xEF)
+            // These use DX register directly, no operands needed in instruction
+            0xEC | 0xED | 0xEE | 0xEF => {
+                // No operands needed - handlers access DX directly
+                instr = instr.with_length(1);
+            }
+
             // Default case for unimplemented/invalid opcodes
             _ => {
                 // No operands, length is just 1

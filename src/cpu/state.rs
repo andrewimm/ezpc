@@ -12,11 +12,24 @@ use crate::memory::MemoryBus;
 
 /// 8088 CPU state
 pub struct Cpu {
-    /// General purpose registers: AX, CX, DX, BX, SP, BP, SI, DI (indices 0-7)
+    /// General purpose registers (16-bit)
+    /// - Index 0: AX (accumulator)
+    /// - Index 1: CX (counter)
+    /// - Index 2: DX (data)
+    /// - Index 3: BX (base)
+    /// - Index 4: SP (stack pointer)
+    /// - Index 5: BP (base pointer)
+    /// - Index 6: SI (source index)
+    /// - Index 7: DI (destination index)
+    ///
     /// Stored as u16 for word access. Byte access uses low/high byte extraction.
     pub regs: [u16; 8],
 
-    /// Segment registers: ES, CS, SS, DS (indices 0-3)
+    /// Segment registers (16-bit)
+    /// - Index 0: ES (extra segment)
+    /// - Index 1: CS (code segment)
+    /// - Index 2: SS (stack segment)
+    /// - Index 3: DS (data segment)
     pub segments: [u16; 4],
 
     /// Instruction pointer

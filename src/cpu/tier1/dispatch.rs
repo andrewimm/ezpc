@@ -253,18 +253,18 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     invalid_opcode,          // 0xE1: LOOPE/LOOPZ (not implemented yet)
     invalid_opcode,          // 0xE2: LOOP (not implemented yet)
     invalid_opcode,          // 0xE3: JCXZ (not implemented yet)
-    invalid_opcode,          // 0xE4: IN AL, imm8 (not implemented yet)
-    invalid_opcode,          // 0xE5: IN AX, imm8 (not implemented yet)
-    invalid_opcode,          // 0xE6: OUT imm8, AL (not implemented yet)
-    invalid_opcode,          // 0xE7: OUT imm8, AX (not implemented yet)
+    io::in_al_imm8,          // 0xE4: IN AL, imm8
+    io::in_ax_imm8,          // 0xE5: IN AX, imm8
+    io::out_imm8_al,         // 0xE6: OUT imm8, AL
+    io::out_imm8_ax,         // 0xE7: OUT imm8, AX
     control_flow::call_near, // 0xE8: CALL near
     control_flow::jmp_near,  // 0xE9: JMP near
     invalid_opcode,          // 0xEA: JMP far (not implemented yet)
     control_flow::jmp_short, // 0xEB: JMP short
-    invalid_opcode,          // 0xEC: IN AL, DX (not implemented yet)
-    invalid_opcode,          // 0xED: IN AX, DX (not implemented yet)
-    invalid_opcode,          // 0xEE: OUT DX, AL (not implemented yet)
-    invalid_opcode,          // 0xEF: OUT DX, AX (not implemented yet)
+    io::in_al_dx,            // 0xEC: IN AL, DX
+    io::in_ax_dx,            // 0xED: IN AX, DX
+    io::out_dx_al,           // 0xEE: OUT DX, AL
+    io::out_dx_ax,           // 0xEF: OUT DX, AX
     // 0xF0-0xFF: LOCK, INT1, REP, HLT, CMC, and groups
     invalid_opcode,         // 0xF0: LOCK prefix (not implemented yet)
     invalid_opcode,         // 0xF1: INT1 (undocumented, not implemented)

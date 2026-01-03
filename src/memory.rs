@@ -5,6 +5,8 @@
 //! - 0xA0000-0xBFFFF: Video memory (not implemented yet)
 //! - 0xC0000-0xFFFFF: ROM and BIOS
 
+use crate::io::IoDevice;
+
 /// Memory bus for the IBM PC
 pub struct MemoryBus {
     /// RAM - starting with 64KB
@@ -12,6 +14,9 @@ pub struct MemoryBus {
 
     /// ROM - BIOS and extension ROMs (64KB space)
     rom: [u8; 65536],
+
+    /// Registered IO devices for IN/OUT instructions
+    io_devices: Vec<Box<dyn IoDevice>>,
 }
 
 impl MemoryBus {
@@ -20,6 +25,7 @@ impl MemoryBus {
         Self {
             ram: [0; 65536],
             rom: [0; 65536],
+            io_devices: Vec::new(),
         }
     }
 
@@ -69,5 +75,48 @@ impl MemoryBus {
     pub fn load(&mut self, data: &[u8], offset: usize) {
         let end = (offset + data.len()).min(self.ram.len());
         self.ram[offset..end].copy_from_slice(&data[..end - offset]);
+    }
+
+    /// Register an IO peripheral device
+    pub fn register_io_device(&mut self, device: Box<dyn IoDevice>) {
+        self.io_devices.push(device);
+    }
+
+    /// Read a byte from an IO port
+    #[inline(always)]
+    pub fn io_read_u8(&mut self, port: u16) -> u8 {
+        for device in &mut self.io_devices {
+            if device.port_range().contains(&port) {
+                return device.read_u8(port);
+            }
+        }
+        0xFF // Unmapped port returns 0xFF
+    }
+
+    /// Write a byte to an IO port
+    #[inline(always)]
+    pub fn io_write_u8(&mut self, port: u16, value: u8) {
+        for device in &mut self.io_devices {
+            if device.port_range().contains(&port) {
+                device.write_u8(port, value);
+                return;
+            }
+        }
+        // Writes to unmapped ports are ignored
+    }
+
+    /// Read a word (little-endian) from an IO port
+    #[inline(always)]
+    pub fn io_read_u16(&mut self, port: u16) -> u16 {
+        let lo = self.io_read_u8(port) as u16;
+        let hi = self.io_read_u8(port + 1) as u16;
+        lo | (hi << 8)
+    }
+
+    /// Write a word (little-endian) to an IO port
+    #[inline(always)]
+    pub fn io_write_u16(&mut self, port: u16, value: u16) {
+        self.io_write_u8(port, value as u8);
+        self.io_write_u8(port + 1, (value >> 8) as u8);
     }
 }

@@ -3,4 +3,5 @@
 //! A high-performance, cycle-accurate emulator using a three-tier execution system.
 
 pub mod cpu;
+pub mod io;
 pub mod memory;
