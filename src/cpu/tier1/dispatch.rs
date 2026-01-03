@@ -274,12 +274,12 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     invalid_opcode,         // 0xF5: CMC (not implemented yet)
     invalid_opcode, // 0xF6: TEST/NOT/NEG/MUL/IMUL/DIV/IDIV r/m8 (group, not implemented yet)
     invalid_opcode, // 0xF7: TEST/NOT/NEG/MUL/IMUL/DIV/IDIV r/m16 (group, not implemented yet)
-    invalid_opcode, // 0xF8: CLC (not implemented yet)
-    invalid_opcode, // 0xF9: STC (not implemented yet)
-    invalid_opcode, // 0xFA: CLI (not implemented yet)
-    invalid_opcode, // 0xFB: STI (not implemented yet)
-    invalid_opcode, // 0xFC: CLD (not implemented yet)
-    invalid_opcode, // 0xFD: STD (not implemented yet)
+    flags::clc,     // 0xF8: CLC - Clear Carry Flag
+    flags::stc,     // 0xF9: STC - Set Carry Flag
+    flags::cli,     // 0xFA: CLI - Clear Interrupt Flag
+    flags::sti,     // 0xFB: STI - Set Interrupt Flag
+    flags::cld,     // 0xFC: CLD - Clear Direction Flag
+    flags::std,     // 0xFD: STD - Set Direction Flag
     invalid_opcode, // 0xFE: INC/DEC r/m8 (group, not implemented yet)
     control_flow::group_ff, // 0xFF: INC/DEC/CALL/JMP/PUSH r/m16 (group)
 ];

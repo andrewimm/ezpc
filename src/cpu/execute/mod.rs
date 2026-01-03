@@ -6,6 +6,7 @@
 pub mod arithmetic;
 pub mod control_flow;
 pub mod data_transfer;
+pub mod flags;
 pub mod handlers;
 pub mod io;
 pub mod logic;
