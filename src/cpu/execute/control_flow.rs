@@ -406,3 +406,64 @@ pub fn ret_far_imm(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstructio
     let cleanup = instr.src.value;
     cpu.regs[4] = cpu.regs[4].wrapping_add(cleanup); // SP
 }
+
+/// LOOP - Loop while CX not zero
+/// Opcode: 0xE2
+///
+/// Decrements CX and jumps if CX != 0
+/// If CX-1 != 0 then IP = IP + rel8
+pub fn loop_rel8(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    // Decrement CX
+    cpu.regs[1] = cpu.regs[1].wrapping_sub(1); // CX
+
+    // Jump if CX != 0
+    if cpu.regs[1] != 0 {
+        let offset = instr.src.value as i16;
+        cpu.ip = cpu.ip.wrapping_add(offset as u16);
+    }
+}
+
+/// LOOPE/LOOPZ - Loop while CX not zero and ZF=1
+/// Opcode: 0xE1
+///
+/// Decrements CX and jumps if CX != 0 AND ZF = 1
+/// If CX-1 != 0 and ZF=1 then IP = IP + rel8
+pub fn loope(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    // Decrement CX
+    cpu.regs[1] = cpu.regs[1].wrapping_sub(1); // CX
+
+    // Jump if CX != 0 AND ZF = 1
+    if cpu.regs[1] != 0 && cpu.get_flag(Cpu::ZF) {
+        let offset = instr.src.value as i16;
+        cpu.ip = cpu.ip.wrapping_add(offset as u16);
+    }
+}
+
+/// LOOPNE/LOOPNZ - Loop while CX not zero and ZF=0
+/// Opcode: 0xE0
+///
+/// Decrements CX and jumps if CX != 0 AND ZF = 0
+/// If CX-1 != 0 and ZF=0 then IP = IP + rel8
+pub fn loopne(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    // Decrement CX
+    cpu.regs[1] = cpu.regs[1].wrapping_sub(1); // CX
+
+    // Jump if CX != 0 AND ZF = 0
+    if cpu.regs[1] != 0 && !cpu.get_flag(Cpu::ZF) {
+        let offset = instr.src.value as i16;
+        cpu.ip = cpu.ip.wrapping_add(offset as u16);
+    }
+}
+
+/// JCXZ - Jump if CX is zero
+/// Opcode: 0xE3
+///
+/// Jumps if CX = 0 (does not modify CX)
+/// If CX=0 then IP = IP + rel8
+pub fn jcxz(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    // Jump if CX = 0
+    if cpu.regs[1] == 0 {
+        let offset = instr.src.value as i16;
+        cpu.ip = cpu.ip.wrapping_add(offset as u16);
+    }
+}

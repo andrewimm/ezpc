@@ -249,10 +249,10 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     invalid_opcode, // 0xDE: ESC (FPU, not implemented)
     invalid_opcode, // 0xDF: ESC (FPU, not implemented)
     // 0xE0-0xEF: LOOP, IN, OUT, CALL, JMP
-    invalid_opcode,          // 0xE0: LOOPNE/LOOPNZ (not implemented yet)
-    invalid_opcode,          // 0xE1: LOOPE/LOOPZ (not implemented yet)
-    invalid_opcode,          // 0xE2: LOOP (not implemented yet)
-    invalid_opcode,          // 0xE3: JCXZ (not implemented yet)
+    control_flow::loopne,    // 0xE0: LOOPNE/LOOPNZ
+    control_flow::loope,     // 0xE1: LOOPE/LOOPZ
+    control_flow::loop_rel8, // 0xE2: LOOP
+    control_flow::jcxz,      // 0xE3: JCXZ
     io::in_al_imm8,          // 0xE4: IN AL, imm8
     io::in_ax_imm8,          // 0xE5: IN AX, imm8
     io::out_imm8_al,         // 0xE6: OUT imm8, AL

@@ -739,3 +739,239 @@ fn test_jg_not_taken_zero() {
     harness.step(); // MOV AX, 0x1234
     assert_eq!(harness.cpu.regs[0], 0x1234);
 }
+
+#[test]
+fn test_loop_taken() {
+    let mut harness = CpuHarness::new();
+    // MOV CX, 3; <loop_start>: NOP; LOOP loop_start
+    harness.load_program(
+        &[
+            0xB9, 0x03, 0x00, // MOV CX, 3 (offset 0-2)
+            0x90, // NOP (offset 3)
+            0xE2, 0xFD, // LOOP -3 (offset 4-5, jumps back to offset 3)
+        ],
+        0,
+    );
+
+    harness.step(); // MOV CX, 3
+    assert_eq!(harness.cpu.regs[1], 3); // CX = 3
+
+    // First iteration
+    harness.step(); // NOP
+    assert_eq!(harness.cpu.ip, 4); // At LOOP instruction
+
+    harness.step(); // LOOP (CX becomes 2, jump taken)
+    assert_eq!(harness.cpu.regs[1], 2); // CX decremented to 2
+    assert_eq!(harness.cpu.ip, 3); // Jumped back to NOP
+
+    // Second iteration
+    harness.step(); // NOP
+    harness.step(); // LOOP (CX becomes 1, jump taken)
+    assert_eq!(harness.cpu.regs[1], 1); // CX decremented to 1
+    assert_eq!(harness.cpu.ip, 3); // Jumped back to NOP
+
+    // Third iteration
+    harness.step(); // NOP
+    harness.step(); // LOOP (CX becomes 0, jump NOT taken)
+    assert_eq!(harness.cpu.regs[1], 0); // CX decremented to 0
+    assert_eq!(harness.cpu.ip, 6); // Fell through, not jumped
+}
+
+#[test]
+fn test_loop_not_taken() {
+    let mut harness = CpuHarness::new();
+    // MOV CX, 1; NOP; LOOP -3; MOV AX, 0x1234
+    harness.load_program(
+        &[
+            0xB9, 0x01, 0x00, // MOV CX, 1 (offset 0-2)
+            0x90, // NOP (offset 3)
+            0xE2, 0xFD, // LOOP -3 (offset 4-5)
+            0xB8, 0x34, 0x12, // MOV AX, 0x1234 (offset 6-8)
+        ],
+        0,
+    );
+
+    harness.step(); // MOV CX, 1
+    assert_eq!(harness.cpu.regs[1], 1); // CX = 1
+
+    harness.step(); // NOP
+    harness.step(); // LOOP (CX becomes 0, jump NOT taken)
+    assert_eq!(harness.cpu.regs[1], 0); // CX decremented to 0
+    assert_eq!(harness.cpu.ip, 6); // Not jumped
+
+    harness.step(); // MOV AX, 0x1234
+    assert_eq!(harness.cpu.regs[0], 0x1234);
+}
+
+#[test]
+fn test_loope_taken() {
+    let mut harness = CpuHarness::new();
+    // MOV CX, 2; MOV AL, 0; ADD AL, 0 (set ZF); LOOPE -3
+    harness.load_program(
+        &[
+            0xB9, 0x02, 0x00, // MOV CX, 2 (offset 0-2)
+            0xB0, 0x00, // MOV AL, 0 (offset 3-4)
+            0x04, 0x00, // ADD AL, 0 (sets ZF) (offset 5-6)
+            0xE1, 0xFC, // LOOPE -4 (offset 7-8, jumps back to offset 5)
+        ],
+        0,
+    );
+
+    harness.step(); // MOV CX, 2
+    assert_eq!(harness.cpu.regs[1], 2); // CX = 2
+
+    harness.step(); // MOV AL, 0
+
+    // First iteration
+    harness.step(); // ADD AL, 0 (sets ZF)
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF));
+
+    harness.step(); // LOOPE (CX becomes 1, ZF=1, jump taken)
+    assert_eq!(harness.cpu.regs[1], 1); // CX decremented to 1
+    assert_eq!(harness.cpu.ip, 5); // Jumped back
+
+    // Second iteration
+    harness.step(); // ADD AL, 0 (ZF still 1)
+    harness.step(); // LOOPE (CX becomes 0, jump NOT taken because CX=0)
+    assert_eq!(harness.cpu.regs[1], 0);
+    assert_eq!(harness.cpu.ip, 9); // Not jumped
+}
+
+#[test]
+fn test_loope_not_taken_zf_clear() {
+    let mut harness = CpuHarness::new();
+    // MOV CX, 2; MOV AL, 1; ADD AL, 0 (clears ZF); LOOPE -3
+    harness.load_program(
+        &[
+            0xB9, 0x02, 0x00, // MOV CX, 2
+            0xB0, 0x01, // MOV AL, 1
+            0x04, 0x00, // ADD AL, 0 (clears ZF, result is 1)
+            0xE1, 0xFC, // LOOPE -4
+            0xB8, 0x34, 0x12, // MOV AX, 0x1234
+        ],
+        0,
+    );
+
+    harness.step(); // MOV CX, 2
+    harness.step(); // MOV AL, 1
+    harness.step(); // ADD AL, 0
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::ZF)); // ZF should be clear
+
+    harness.step(); // LOOPE (CX becomes 1, but ZF=0, jump NOT taken)
+    assert_eq!(harness.cpu.regs[1], 1); // CX decremented to 1
+    assert_eq!(harness.cpu.ip, 9); // Not jumped
+
+    harness.step(); // MOV AX, 0x1234
+    assert_eq!(harness.cpu.regs[0], 0x1234);
+}
+
+#[test]
+fn test_loopne_taken() {
+    let mut harness = CpuHarness::new();
+    // MOV CX, 2; MOV AL, 1; ADD AL, 0 (clears ZF); LOOPNE -3
+    harness.load_program(
+        &[
+            0xB9, 0x02, 0x00, // MOV CX, 2 (offset 0-2)
+            0xB0, 0x01, // MOV AL, 1 (offset 3-4)
+            0x04, 0x00, // ADD AL, 0 (clears ZF) (offset 5-6)
+            0xE0, 0xFC, // LOOPNE -4 (offset 7-8)
+        ],
+        0,
+    );
+
+    harness.step(); // MOV CX, 2
+    assert_eq!(harness.cpu.regs[1], 2); // CX = 2
+
+    harness.step(); // MOV AL, 1
+
+    // First iteration
+    harness.step(); // ADD AL, 0 (clears ZF)
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::ZF));
+
+    harness.step(); // LOOPNE (CX becomes 1, ZF=0, jump taken)
+    assert_eq!(harness.cpu.regs[1], 1); // CX decremented to 1
+    assert_eq!(harness.cpu.ip, 5); // Jumped back
+
+    // Second iteration
+    harness.step(); // ADD AL, 0 (ZF still 0)
+    harness.step(); // LOOPNE (CX becomes 0, jump NOT taken because CX=0)
+    assert_eq!(harness.cpu.regs[1], 0);
+    assert_eq!(harness.cpu.ip, 9); // Not jumped
+}
+
+#[test]
+fn test_loopne_not_taken_zf_set() {
+    let mut harness = CpuHarness::new();
+    // MOV CX, 2; MOV AL, 0; ADD AL, 0 (sets ZF); LOOPNE -3
+    harness.load_program(
+        &[
+            0xB9, 0x02, 0x00, // MOV CX, 2
+            0xB0, 0x00, // MOV AL, 0
+            0x04, 0x00, // ADD AL, 0 (sets ZF)
+            0xE0, 0xFC, // LOOPNE -4
+            0xB8, 0x34, 0x12, // MOV AX, 0x1234
+        ],
+        0,
+    );
+
+    harness.step(); // MOV CX, 2
+    harness.step(); // MOV AL, 0
+    harness.step(); // ADD AL, 0
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF)); // ZF should be set
+
+    harness.step(); // LOOPNE (CX becomes 1, but ZF=1, jump NOT taken)
+    assert_eq!(harness.cpu.regs[1], 1); // CX decremented to 1
+    assert_eq!(harness.cpu.ip, 9); // Not jumped
+
+    harness.step(); // MOV AX, 0x1234
+    assert_eq!(harness.cpu.regs[0], 0x1234);
+}
+
+#[test]
+fn test_jcxz_taken() {
+    let mut harness = CpuHarness::new();
+    // MOV CX, 0; JCXZ +2; NOP; NOP; MOV AX, 0x1234
+    harness.load_program(
+        &[
+            0xB9, 0x00, 0x00, // MOV CX, 0 (offset 0-2)
+            0xE3, 0x02, // JCXZ +2 (offset 3-4)
+            0x90, 0x90, // 2 NOPs to skip (offset 5-6)
+            0xB8, 0x34, 0x12, // MOV AX, 0x1234 (offset 7-9)
+        ],
+        0,
+    );
+
+    harness.step(); // MOV CX, 0
+    assert_eq!(harness.cpu.regs[1], 0); // CX = 0
+
+    harness.step(); // JCXZ +2 (should jump)
+    assert_eq!(harness.cpu.regs[1], 0); // CX unchanged
+    assert_eq!(harness.cpu.ip, 7); // Jumped over NOPs
+
+    harness.step(); // MOV AX, 0x1234
+    assert_eq!(harness.cpu.regs[0], 0x1234);
+}
+
+#[test]
+fn test_jcxz_not_taken() {
+    let mut harness = CpuHarness::new();
+    // MOV CX, 1; JCXZ +2; MOV AX, 0x1234
+    harness.load_program(
+        &[
+            0xB9, 0x01, 0x00, // MOV CX, 1 (offset 0-2)
+            0xE3, 0x02, // JCXZ +2 (offset 3-4)
+            0xB8, 0x34, 0x12, // MOV AX, 0x1234 (offset 5-7)
+        ],
+        0,
+    );
+
+    harness.step(); // MOV CX, 1
+    assert_eq!(harness.cpu.regs[1], 1); // CX = 1
+
+    harness.step(); // JCXZ +2 (should NOT jump)
+    assert_eq!(harness.cpu.regs[1], 1); // CX unchanged
+    assert_eq!(harness.cpu.ip, 5); // Not jumped
+
+    harness.step(); // MOV AX, 0x1234
+    assert_eq!(harness.cpu.regs[0], 0x1234);
+}

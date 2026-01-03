@@ -391,6 +391,12 @@ impl Cpu {
                 instr = instr.with_src(Operand::imm16(rel8)).with_length(2);
             }
 
+            // LOOP family (0xE0-0xE3)
+            0xE0 | 0xE1 | 0xE2 | 0xE3 => {
+                let rel8 = self.fetch_u8(mem) as i8 as i16 as u16;
+                instr = instr.with_src(Operand::imm16(rel8)).with_length(2);
+            }
+
             // CALL near (0xE8)
             0xE8 => {
                 let rel16 = self.fetch_u16(mem);
