@@ -151,8 +151,8 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     arithmetic::group_81,     // 0x81: Arithmetic r/m16, imm16 (group)
     arithmetic::group_80,     // 0x82: Arithmetic r/m8, imm8 (alias of 0x80)
     arithmetic::group_83,     // 0x83: Arithmetic r/m16, imm8 (sign-extended, group)
-    invalid_opcode,           // 0x84: TEST r/m8, r8 (not implemented yet)
-    invalid_opcode,           // 0x85: TEST r/m16, r16 (not implemented yet)
+    logic::test_rm_r,         // 0x84: TEST r/m8, r8
+    logic::test_rm_r,         // 0x85: TEST r/m16, r16
     data_transfer::xchg_rm_r, // 0x86: XCHG r/m8, r8
     data_transfer::xchg_rm_r, // 0x87: XCHG r/m16, r16
     data_transfer::mov_rm_r,  // 0x88: MOV r/m8, r8
@@ -181,22 +181,22 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     invalid_opcode,             // 0x9E: SAHF (not implemented yet)
     invalid_opcode,             // 0x9F: LAHF (not implemented yet)
     // 0xA0-0xAF: MOV, string operations
-    invalid_opcode, // 0xA0: MOV AL, moffs8 (not implemented yet)
-    invalid_opcode, // 0xA1: MOV AX, moffs16 (not implemented yet)
-    invalid_opcode, // 0xA2: MOV moffs8, AL (not implemented yet)
-    invalid_opcode, // 0xA3: MOV moffs16, AX (not implemented yet)
-    invalid_opcode, // 0xA4: MOVSB (not implemented yet)
-    invalid_opcode, // 0xA5: MOVSW (not implemented yet)
-    invalid_opcode, // 0xA6: CMPSB (not implemented yet)
-    invalid_opcode, // 0xA7: CMPSW (not implemented yet)
-    invalid_opcode, // 0xA8: TEST AL, imm8 (not implemented yet)
-    invalid_opcode, // 0xA9: TEST AX, imm16 (not implemented yet)
-    invalid_opcode, // 0xAA: STOSB (not implemented yet)
-    invalid_opcode, // 0xAB: STOSW (not implemented yet)
-    invalid_opcode, // 0xAC: LODSB (not implemented yet)
-    invalid_opcode, // 0xAD: LODSW (not implemented yet)
-    invalid_opcode, // 0xAE: SCASB (not implemented yet)
-    invalid_opcode, // 0xAF: SCASW (not implemented yet)
+    invalid_opcode,      // 0xA0: MOV AL, moffs8 (not implemented yet)
+    invalid_opcode,      // 0xA1: MOV AX, moffs16 (not implemented yet)
+    invalid_opcode,      // 0xA2: MOV moffs8, AL (not implemented yet)
+    invalid_opcode,      // 0xA3: MOV moffs16, AX (not implemented yet)
+    invalid_opcode,      // 0xA4: MOVSB (not implemented yet)
+    invalid_opcode,      // 0xA5: MOVSW (not implemented yet)
+    invalid_opcode,      // 0xA6: CMPSB (not implemented yet)
+    invalid_opcode,      // 0xA7: CMPSW (not implemented yet)
+    logic::test_acc_imm, // 0xA8: TEST AL, imm8
+    logic::test_acc_imm, // 0xA9: TEST AX, imm16
+    invalid_opcode,      // 0xAA: STOSB (not implemented yet)
+    invalid_opcode,      // 0xAB: STOSW (not implemented yet)
+    invalid_opcode,      // 0xAC: LODSB (not implemented yet)
+    invalid_opcode,      // 0xAD: LODSW (not implemented yet)
+    invalid_opcode,      // 0xAE: SCASB (not implemented yet)
+    invalid_opcode,      // 0xAF: SCASW (not implemented yet)
     // 0xB0-0xBF: MOV immediate to register
     data_transfer::mov_r_imm, // 0xB0: MOV AL, imm8
     data_transfer::mov_r_imm, // 0xB1: MOV CL, imm8
