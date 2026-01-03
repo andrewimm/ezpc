@@ -157,3 +157,202 @@ fn test_flags_dont_affect_other_flags() {
     assert!(harness.cpu.get_flag(Cpu::ZF)); // Unchanged
     assert!(harness.cpu.get_flag(Cpu::SF)); // Unchanged
 }
+
+#[test]
+fn test_pushf() {
+    let mut harness = CpuHarness::new();
+    // MOV SP, 0x1000; PUSHF
+    harness.load_program(
+        &[
+            0xBC, 0x00, 0x10, // MOV SP, 0x1000
+            0x9C, // PUSHF
+        ],
+        0,
+    );
+
+    // Set some flags to a known state
+    harness.cpu.set_flag(Cpu::CF, true);
+    harness.cpu.set_flag(Cpu::ZF, true);
+    harness.cpu.set_flag(Cpu::SF, false);
+    harness.cpu.set_flag(Cpu::OF, true);
+
+    harness.step(); // MOV SP, 0x1000
+    assert_eq!(harness.cpu.regs[4], 0x1000); // SP
+
+    let flags_before = harness.cpu.get_flags();
+
+    harness.step(); // PUSHF
+    assert_eq!(harness.cpu.regs[4], 0x0FFE); // SP should decrement by 2
+
+    // Verify FLAGS was pushed to stack
+    let pushed_flags = harness.mem.read_u16(0x0FFE);
+    assert_eq!(pushed_flags, flags_before);
+    assert_eq!(harness.cpu.ip, 4);
+}
+
+#[test]
+fn test_popf() {
+    let mut harness = CpuHarness::new();
+    // MOV SP, 0x1000; PUSHF; POPF
+    harness.load_program(
+        &[
+            0xBC, 0x00, 0x10, // MOV SP, 0x1000
+            0x9C, // PUSHF
+            0x9D, // POPF
+        ],
+        0,
+    );
+
+    // Set flags to a known state
+    harness.cpu.set_flag(Cpu::CF, true);
+    harness.cpu.set_flag(Cpu::ZF, false);
+    harness.cpu.set_flag(Cpu::SF, true);
+    harness.cpu.set_flag(Cpu::IF, true);
+
+    harness.step(); // MOV SP, 0x1000
+    let flags_before = harness.cpu.get_flags();
+
+    harness.step(); // PUSHF
+    assert_eq!(harness.cpu.regs[4], 0x0FFE); // SP
+
+    // Clear all flags to verify POPF works
+    harness.cpu.set_flag(Cpu::CF, false);
+    harness.cpu.set_flag(Cpu::ZF, false);
+    harness.cpu.set_flag(Cpu::SF, false);
+    harness.cpu.set_flag(Cpu::IF, false);
+
+    harness.step(); // POPF
+    assert_eq!(harness.cpu.regs[4], 0x1000); // SP back to original
+
+    // Verify flags were restored
+    let flags_after = harness.cpu.get_flags();
+    assert_eq!(flags_after, flags_before);
+    assert_eq!(harness.cpu.ip, 5);
+}
+
+#[test]
+fn test_sahf() {
+    let mut harness = CpuHarness::new();
+    // MOV AH, 0xD5; SAHF
+    // 0xD5 = 11010101b = SF=1, ZF=1, AF=1, PF=1, CF=1
+    harness.load_program(
+        &[
+            0xB4, 0xD5, // MOV AH, 0xD5
+            0x9E, // SAHF
+        ],
+        0,
+    );
+
+    // Set some high flags that should not be affected
+    harness.cpu.set_flag(Cpu::OF, true);
+    harness.cpu.set_flag(Cpu::IF, true);
+    harness.cpu.set_flag(Cpu::DF, true);
+
+    harness.step(); // MOV AH, 0xD5
+    assert_eq!(harness.cpu.read_reg8(4), 0xD5); // AH
+
+    harness.step(); // SAHF
+
+    // Check that the low flags were set from AH
+    assert!(harness.cpu.get_flag(Cpu::SF)); // Bit 7
+    assert!(harness.cpu.get_flag(Cpu::ZF)); // Bit 6
+    assert!(harness.cpu.get_flag(Cpu::AF)); // Bit 4
+    assert!(harness.cpu.get_flag(Cpu::PF)); // Bit 2
+    assert!(harness.cpu.get_flag(Cpu::CF)); // Bit 0
+
+    // High flags should be unchanged
+    assert!(harness.cpu.get_flag(Cpu::OF));
+    assert!(harness.cpu.get_flag(Cpu::IF));
+    assert!(harness.cpu.get_flag(Cpu::DF));
+    assert_eq!(harness.cpu.ip, 3);
+}
+
+#[test]
+fn test_lahf() {
+    let mut harness = CpuHarness::new();
+    // LAHF
+    harness.load_program(&[0x9F], 0);
+
+    // Set flags to a known pattern
+    harness.cpu.set_flag(Cpu::SF, true); // Bit 7
+    harness.cpu.set_flag(Cpu::ZF, false); // Bit 6
+    harness.cpu.set_flag(Cpu::AF, true); // Bit 4
+    harness.cpu.set_flag(Cpu::PF, true); // Bit 2
+    harness.cpu.set_flag(Cpu::CF, true); // Bit 0
+    // Bit 1 is always set
+
+    // Clear AH to verify LAHF works
+    harness.cpu.write_reg8(4, 0x00); // AH
+    assert_eq!(harness.cpu.read_reg8(4), 0x00);
+
+    harness.step(); // LAHF
+
+    // AH should now contain the low byte of FLAGS
+    // Expected: SF(1) ZF(0) 0 AF(1) 0 PF(1) 1 CF(1) = 10010111b = 0x97
+    let ah = harness.cpu.read_reg8(4);
+    assert_eq!(ah, 0x97);
+    assert_eq!(harness.cpu.ip, 1);
+}
+
+#[test]
+fn test_sahf_lahf_roundtrip() {
+    let mut harness = CpuHarness::new();
+    // MOV AH, 0xC5; SAHF; LAHF
+    harness.load_program(
+        &[
+            0xB4, 0xC5, // MOV AH, 0xC5
+            0x9E, // SAHF
+            0x9F, // LAHF
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AH, 0xC5
+
+    harness.step(); // SAHF
+
+    // Clear AH to test LAHF
+    harness.cpu.write_reg8(4, 0x00);
+
+    harness.step(); // LAHF
+
+    // AH should be restored (with bit 1 always set)
+    let ah_after = harness.cpu.read_reg8(4);
+    // 0xC5 = 11000101, bit 1 is already 0, so with bit 1 forced to 1: 11000111 = 0xC7
+    assert_eq!(ah_after, 0xC7);
+}
+
+#[test]
+fn test_pushf_popf_preserves_all_flags() {
+    let mut harness = CpuHarness::new();
+    // MOV SP, 0x1000; PUSHF; POPF
+    harness.load_program(
+        &[
+            0xBC, 0x00, 0x10, // MOV SP, 0x1000
+            0x9C, // PUSHF
+            0x9D, // POPF
+        ],
+        0,
+    );
+
+    // Set all flags to a known pattern
+    harness.cpu.set_flag(Cpu::CF, true);
+    harness.cpu.set_flag(Cpu::PF, false);
+    harness.cpu.set_flag(Cpu::AF, true);
+    harness.cpu.set_flag(Cpu::ZF, false);
+    harness.cpu.set_flag(Cpu::SF, true);
+    harness.cpu.set_flag(Cpu::TF, false);
+    harness.cpu.set_flag(Cpu::IF, true);
+    harness.cpu.set_flag(Cpu::DF, false);
+    harness.cpu.set_flag(Cpu::OF, true);
+
+    harness.step(); // MOV SP, 0x1000
+
+    let flags_before = harness.cpu.get_flags();
+
+    harness.step(); // PUSHF
+    harness.step(); // POPF
+
+    let flags_after = harness.cpu.get_flags();
+    assert_eq!(flags_after, flags_before);
+}

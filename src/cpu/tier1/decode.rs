@@ -104,6 +104,11 @@ impl Cpu {
                 instr = instr.with_dst(Operand::reg16(reg)).with_length(1);
             }
 
+            // PUSHF, POPF, SAHF, LAHF (0x9C-0x9F) - no operands
+            0x9C | 0x9D | 0x9E | 0x9F => {
+                instr = instr.with_length(1);
+            }
+
             // PUSH r16 (0x50-0x57)
             0x50..=0x57 => {
                 let reg = opcode & 0x07;

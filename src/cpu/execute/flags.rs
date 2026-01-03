@@ -66,3 +66,56 @@ pub fn cld(cpu: &mut Cpu, _mem: &mut MemoryBus, _instr: &DecodedInstruction) {
 pub fn std(cpu: &mut Cpu, _mem: &mut MemoryBus, _instr: &DecodedInstruction) {
     cpu.set_flag(Cpu::DF, true);
 }
+
+/// Handler for PUSHF (0x9C) - Push FLAGS register onto stack
+///
+/// Pushes the FLAGS register onto the stack.
+/// Stack operation: SP -= 2, [SS:SP] = FLAGS
+/// Takes 10 cycles on the 8088.
+#[inline(always)]
+pub fn pushf(cpu: &mut Cpu, mem: &mut MemoryBus, _instr: &DecodedInstruction) {
+    let flags = cpu.get_flags();
+    crate::cpu::execute::stack::push_word(cpu, mem, flags);
+}
+
+/// Handler for POPF (0x9D) - Pop FLAGS register from stack
+///
+/// Pops FLAGS register from the stack.
+/// Stack operation: FLAGS = [SS:SP], SP += 2
+/// Takes 8 cycles on the 8088.
+#[inline(always)]
+pub fn popf(cpu: &mut Cpu, mem: &mut MemoryBus, _instr: &DecodedInstruction) {
+    let flags = crate::cpu::execute::stack::pop_word(cpu, mem);
+    cpu.set_flags(flags);
+}
+
+/// Handler for SAHF (0x9E) - Store AH into Flags
+///
+/// Copies AH register into the low byte of FLAGS.
+/// Affects: SF, ZF, AF, PF, CF (bits 7, 6, 4, 2, 0 of FLAGS)
+/// Does not affect: OF, DF, IF, TF (bits 11, 10, 9, 8)
+/// Takes 4 cycles on the 8088.
+#[inline(always)]
+pub fn sahf(cpu: &mut Cpu, _mem: &mut MemoryBus, _instr: &DecodedInstruction) {
+    let ah = cpu.read_reg8(4); // AH
+    let current_flags = cpu.get_flags();
+
+    // Clear SF, ZF, AF, PF, CF (bits 7, 6, 4, 2, 0) and bit 1 (always set)
+    let high_flags = current_flags & 0xFF00;
+
+    // Set new low byte from AH, ensuring bit 1 is always set
+    let new_flags = high_flags | (ah as u16) | 0x0002;
+    cpu.set_flags(new_flags);
+}
+
+/// Handler for LAHF (0x9F) - Load AH from Flags
+///
+/// Copies the low byte of FLAGS into AH register.
+/// Loads: SF, ZF, AF, PF, CF (bits 7, 6, 4, 2, 0 of FLAGS)
+/// Takes 4 cycles on the 8088.
+#[inline(always)]
+pub fn lahf(cpu: &mut Cpu, _mem: &mut MemoryBus, _instr: &DecodedInstruction) {
+    let flags = cpu.get_flags();
+    let low_byte = (flags & 0xFF) as u8;
+    cpu.write_reg8(4, low_byte); // AH
+}

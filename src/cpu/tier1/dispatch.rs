@@ -176,10 +176,10 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     invalid_opcode,             // 0x99: CWD (not implemented yet)
     control_flow::call_far,     // 0x9A: CALL far
     invalid_opcode,             // 0x9B: WAIT (not implemented yet)
-    invalid_opcode,             // 0x9C: PUSHF (not implemented yet)
-    invalid_opcode,             // 0x9D: POPF (not implemented yet)
-    invalid_opcode,             // 0x9E: SAHF (not implemented yet)
-    invalid_opcode,             // 0x9F: LAHF (not implemented yet)
+    flags::pushf,               // 0x9C: PUSHF - Push FLAGS register
+    flags::popf,                // 0x9D: POPF - Pop FLAGS register
+    flags::sahf,                // 0x9E: SAHF - Store AH into Flags
+    flags::lahf,                // 0x9F: LAHF - Load AH from Flags
     // 0xA0-0xAF: MOV, string operations
     invalid_opcode,      // 0xA0: MOV AL, moffs8 (not implemented yet)
     invalid_opcode,      // 0xA1: MOV AX, moffs16 (not implemented yet)
