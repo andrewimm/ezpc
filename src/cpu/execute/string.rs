@@ -174,11 +174,144 @@ pub fn lodsw(cpu: &mut Cpu, mem: &mut MemoryBus, _instr: &DecodedInstruction) {
     handle_rep(cpu);
 }
 
+/// CMPSB (0xA6) - Compare bytes at [DS:SI] and [ES:DI], update SI and DI
+///
+/// Compares byte at DS:SI with byte at ES:DI by subtracting and setting flags,
+/// then increments or decrements SI and DI based on the direction flag.
+pub fn cmpsb(cpu: &mut Cpu, mem: &mut MemoryBus, _instr: &DecodedInstruction) {
+    // Read from DS:SI (or segment override)
+    let ds = cpu
+        .segment_override
+        .map(|s| cpu.read_seg(s))
+        .unwrap_or_else(|| cpu.read_seg(3));
+    let si = cpu.read_reg16(6);
+    let byte1 = cpu.read_mem8(mem, ds, si);
+
+    // Read from ES:DI
+    let es = cpu.read_seg(0);
+    let di = cpu.read_reg16(7);
+    let byte2 = cpu.read_mem8(mem, es, di);
+
+    // Perform subtraction and set flags (like CMP)
+    let result = (byte1 as u32).wrapping_sub(byte2 as u32);
+    cpu.set_sub8_of_af(byte1, byte2, result);
+    cpu.set_lazy_flags(result, crate::cpu::state::FlagOp::Sub8);
+
+    // Update SI and DI based on direction flag
+    if cpu.get_flag(Cpu::DF) {
+        cpu.write_reg16(6, si.wrapping_sub(1));
+        cpu.write_reg16(7, di.wrapping_sub(1));
+    } else {
+        cpu.write_reg16(6, si.wrapping_add(1));
+        cpu.write_reg16(7, di.wrapping_add(1));
+    }
+
+    // Handle REPE/REPNE prefix (checking ZF)
+    handle_rep_conditional(cpu);
+}
+
+/// CMPSW (0xA7) - Compare words at [DS:SI] and [ES:DI], update SI and DI
+///
+/// Compares word at DS:SI with word at ES:DI by subtracting and setting flags,
+/// then increments or decrements SI and DI by 2 based on the direction flag.
+pub fn cmpsw(cpu: &mut Cpu, mem: &mut MemoryBus, _instr: &DecodedInstruction) {
+    // Read from DS:SI (or segment override)
+    let ds = cpu
+        .segment_override
+        .map(|s| cpu.read_seg(s))
+        .unwrap_or_else(|| cpu.read_seg(3));
+    let si = cpu.read_reg16(6);
+    let word1 = cpu.read_mem16(mem, ds, si);
+
+    // Read from ES:DI
+    let es = cpu.read_seg(0);
+    let di = cpu.read_reg16(7);
+    let word2 = cpu.read_mem16(mem, es, di);
+
+    // Perform subtraction and set flags (like CMP)
+    let result = (word1 as u32).wrapping_sub(word2 as u32);
+    cpu.set_sub16_of_af(word1, word2, result);
+    cpu.set_lazy_flags(result, crate::cpu::state::FlagOp::Sub16);
+
+    // Update SI and DI based on direction flag
+    if cpu.get_flag(Cpu::DF) {
+        cpu.write_reg16(6, si.wrapping_sub(2));
+        cpu.write_reg16(7, di.wrapping_sub(2));
+    } else {
+        cpu.write_reg16(6, si.wrapping_add(2));
+        cpu.write_reg16(7, di.wrapping_add(2));
+    }
+
+    // Handle REPE/REPNE prefix (checking ZF)
+    handle_rep_conditional(cpu);
+}
+
+/// SCASB (0xAE) - Scan byte: compare AL with [ES:DI], update DI
+///
+/// Compares AL with byte at ES:DI by subtracting and setting flags,
+/// then increments or decrements DI based on the direction flag.
+pub fn scasb(cpu: &mut Cpu, mem: &mut MemoryBus, _instr: &DecodedInstruction) {
+    // Read AL
+    let al = cpu.read_reg8(0);
+
+    // Read from ES:DI
+    let es = cpu.read_seg(0);
+    let di = cpu.read_reg16(7);
+    let byte = cpu.read_mem8(mem, es, di);
+
+    // Perform subtraction and set flags (like CMP)
+    let result = (al as u32).wrapping_sub(byte as u32);
+    cpu.set_sub8_of_af(al, byte, result);
+    cpu.set_lazy_flags(result, crate::cpu::state::FlagOp::Sub8);
+
+    // Update DI based on direction flag
+    let new_di = if cpu.get_flag(Cpu::DF) {
+        di.wrapping_sub(1)
+    } else {
+        di.wrapping_add(1)
+    };
+    cpu.write_reg16(7, new_di);
+
+    // Handle REPE/REPNE prefix (checking ZF)
+    handle_rep_conditional(cpu);
+}
+
+/// SCASW (0xAF) - Scan word: compare AX with [ES:DI], update DI
+///
+/// Compares AX with word at ES:DI by subtracting and setting flags,
+/// then increments or decrements DI by 2 based on the direction flag.
+pub fn scasw(cpu: &mut Cpu, mem: &mut MemoryBus, _instr: &DecodedInstruction) {
+    // Read AX
+    let ax = cpu.read_reg16(0);
+
+    // Read from ES:DI
+    let es = cpu.read_seg(0);
+    let di = cpu.read_reg16(7);
+    let word = cpu.read_mem16(mem, es, di);
+
+    // Perform subtraction and set flags (like CMP)
+    let result = (ax as u32).wrapping_sub(word as u32);
+    cpu.set_sub16_of_af(ax, word, result);
+    cpu.set_lazy_flags(result, crate::cpu::state::FlagOp::Sub16);
+
+    // Update DI based on direction flag
+    let new_di = if cpu.get_flag(Cpu::DF) {
+        di.wrapping_sub(2)
+    } else {
+        di.wrapping_add(2)
+    };
+    cpu.write_reg16(7, new_di);
+
+    // Handle REPE/REPNE prefix (checking ZF)
+    handle_rep_conditional(cpu);
+}
+
 /// Helper function to handle REP prefix for string operations
 ///
 /// If a REP prefix is active:
 /// 1. Decrement CX
 /// 2. If CX != 0, jump back to the REP prefix to repeat
+/// Used for MOVS, STOS, LODS (unconditional repeat)
 fn handle_rep(cpu: &mut Cpu) {
     if cpu.repeat_prefix != RepeatPrefix::None {
         // Decrement CX
@@ -187,9 +320,44 @@ fn handle_rep(cpu: &mut Cpu) {
         cpu.write_reg16(1, new_cx);
 
         // If CX != 0, jump back to repeat
-        // (For CMPS/SCAS with REPE/REPNE, they would also check ZF here)
         if new_cx != 0 {
             cpu.ip = cpu.repeat_ip;
+        }
+    }
+}
+
+/// Helper function to handle REPE/REPNE prefix for comparison string operations
+///
+/// For CMPS and SCAS instructions:
+/// 1. Decrement CX
+/// 2. Check continuation condition based on prefix type and ZF
+/// 3. If conditions met, jump back to repeat
+fn handle_rep_conditional(cpu: &mut Cpu) {
+    match cpu.repeat_prefix {
+        RepeatPrefix::None => {
+            // No prefix, nothing to do
+        }
+        RepeatPrefix::Rep => {
+            // REPE: Repeat while ZF=1 (equal) and CX != 0
+            let cx = cpu.read_reg16(1);
+            let new_cx = cx.wrapping_sub(1);
+            cpu.write_reg16(1, new_cx);
+
+            let zf = cpu.get_flag(Cpu::ZF);
+            if new_cx != 0 && zf {
+                cpu.ip = cpu.repeat_ip;
+            }
+        }
+        RepeatPrefix::RepNe => {
+            // REPNE: Repeat while ZF=0 (not equal) and CX != 0
+            let cx = cpu.read_reg16(1);
+            let new_cx = cx.wrapping_sub(1);
+            cpu.write_reg16(1, new_cx);
+
+            let zf = cpu.get_flag(Cpu::ZF);
+            if new_cx != 0 && !zf {
+                cpu.ip = cpu.repeat_ip;
+            }
         }
     }
 }
