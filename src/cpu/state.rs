@@ -264,13 +264,13 @@ impl Cpu {
     /// Compute flags from lazy state
     /// OF and AF are computed eagerly and preserved from self.flags
     fn compute_flags(&self) -> u16 {
-        let mut flags = self.flags & 0b0010; // Keep bit 1 (always set)
+        let mut flags = 0b0010; // Bit 1 always set on 8088
 
         // Preserve OF and AF (they are computed eagerly)
         flags |= self.flags & (Self::OF | Self::AF);
 
         match self.last_op {
-            FlagOp::None => return self.flags,
+            FlagOp::None => return self.flags | 0b0010, // Ensure bit 1 is set
 
             FlagOp::Add8
             | FlagOp::Adc8
