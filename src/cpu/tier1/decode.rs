@@ -576,6 +576,19 @@ impl Cpu {
                     .with_length(1 + 1 + extra_len + 1);
             }
 
+            // Group 0xFE: INC/DEC r/m8
+            0xFE => {
+                let modrm = self.fetch_u8(mem);
+                let reg = (modrm >> 3) & 0x07;
+                let (rm_operand, extra_len) = self.decode_rm_from_modrm_byte(mem, modrm, true);
+
+                // Store reg field in high byte of dst.value for group_fe to use
+                let mut dst_with_reg = rm_operand;
+                dst_with_reg.value = (dst_with_reg.value & 0xFF) | ((reg as u16) << 8);
+
+                instr = instr.with_dst(dst_with_reg).with_length(1 + 1 + extra_len);
+            }
+
             // Group 0xFF: INC/DEC/CALL/JMP/PUSH r/m16
             0xFF => {
                 let modrm = self.fetch_u8(mem);

@@ -1452,3 +1452,115 @@ fn test_das_multi_digit_bcd_subtraction() {
     assert_eq!(harness.cpu.read_reg8(0), 0x37);
     assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false);
 }
+
+// === Opcode 0xFE group tests (INC/DEC r/m8) ===
+
+#[test]
+fn test_inc_r8() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x42; INC AL
+    harness.load_program(&[0xB0, 0x42, 0xFE, 0xC0], 0);
+
+    harness.step(); // MOV AL, 0x42
+    harness.step(); // INC AL
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x43); // AL
+}
+
+#[test]
+fn test_inc_r8_overflow() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x7F; INC AL (overflow: 127 -> -128 in signed)
+    harness.load_program(&[0xB0, 0x7F, 0xFE, 0xC0], 0);
+
+    harness.step(); // MOV AL, 0x7F
+    harness.step(); // INC AL
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x80); // AL
+                                                // Check overflow flag is set (positive to negative)
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::OF));
+}
+
+#[test]
+fn test_inc_mem8() {
+    let mut harness = CpuHarness::new();
+    // MOV BX, 0x1000; MOV byte [BX], 0x10; INC byte [BX]
+    harness.load_program(&[0xBB, 0x00, 0x10, 0xC6, 0x07, 0x10, 0xFE, 0x07], 0);
+
+    harness.step(); // MOV BX, 0x1000
+    harness.step(); // MOV byte [BX], 0x10
+    harness.step(); // INC byte [BX]
+
+    // Read from memory at DS:BX
+    let ds = harness.cpu.read_seg(3); // DS
+    let bx = harness.cpu.regs[3];
+    let value = harness.mem.read_u8((ds as u32) * 16 + (bx as u32));
+    assert_eq!(value, 0x11);
+}
+
+#[test]
+fn test_dec_r8() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x42; DEC AL
+    harness.load_program(&[0xB0, 0x42, 0xFE, 0xC8], 0);
+
+    harness.step(); // MOV AL, 0x42
+    harness.step(); // DEC AL
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x41); // AL
+}
+
+#[test]
+fn test_dec_r8_underflow() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x80; DEC AL (overflow: -128 -> 127 in signed)
+    harness.load_program(&[0xB0, 0x80, 0xFE, 0xC8], 0);
+
+    harness.step(); // MOV AL, 0x80
+    harness.step(); // DEC AL
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x7F); // AL
+                                                // Check overflow flag is set (negative to positive)
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::OF));
+}
+
+#[test]
+fn test_dec_mem8() {
+    let mut harness = CpuHarness::new();
+    // MOV BX, 0x1000; MOV byte [BX], 0x20; DEC byte [BX]
+    harness.load_program(&[0xBB, 0x00, 0x10, 0xC6, 0x07, 0x20, 0xFE, 0x0F], 0);
+
+    harness.step(); // MOV BX, 0x1000
+    harness.step(); // MOV byte [BX], 0x20
+    harness.step(); // DEC byte [BX]
+
+    // Read from memory at DS:BX
+    let ds = harness.cpu.read_seg(3); // DS
+    let bx = harness.cpu.regs[3];
+    let value = harness.mem.read_u8((ds as u32) * 16 + (bx as u32));
+    assert_eq!(value, 0x1F);
+}
+
+#[test]
+fn test_inc_bl() {
+    let mut harness = CpuHarness::new();
+    // MOV BL, 0x99; INC BL
+    harness.load_program(&[0xB3, 0x99, 0xFE, 0xC3], 0);
+
+    harness.step(); // MOV BL, 0x99
+    harness.step(); // INC BL
+
+    assert_eq!(harness.cpu.read_reg8(3), 0x9A); // BL
+}
+
+#[test]
+fn test_dec_dh() {
+    let mut harness = CpuHarness::new();
+    // MOV DH, 0x50; DEC DH
+    harness.load_program(&[0xB6, 0x50, 0xFE, 0xCE], 0);
+
+    harness.step(); // MOV DH, 0x50
+    harness.step(); // DEC DH
+
+    assert_eq!(harness.cpu.read_reg8(6), 0x4F); // DH
+}

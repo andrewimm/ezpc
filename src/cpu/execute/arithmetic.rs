@@ -840,3 +840,16 @@ pub fn das(cpu: &mut Cpu, _mem: &mut MemoryBus, _instr: &DecodedInstruction) {
 
     cpu.set_flags(flags);
 }
+
+/// Group handler for opcode 0xFE
+/// Handles INC/DEC r/m8 based on reg field
+pub fn group_fe(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    // The reg field is stored in the value field of dst operand during group decoding
+    let reg = (instr.dst.value >> 8) as u8; // High byte stores the reg field
+
+    match reg {
+        0 => inc_rm(cpu, mem, instr), // INC r/m8
+        1 => dec_rm(cpu, mem, instr), // DEC r/m8
+        _ => panic!("Invalid reg field {} for opcode 0xFE", reg),
+    }
+}

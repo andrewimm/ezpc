@@ -280,6 +280,6 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     flags::sti,     // 0xFB: STI - Set Interrupt Flag
     flags::cld,     // 0xFC: CLD - Clear Direction Flag
     flags::std,     // 0xFD: STD - Set Direction Flag
-    invalid_opcode, // 0xFE: INC/DEC r/m8 (group, not implemented yet)
+    arithmetic::group_fe, // 0xFE: INC/DEC r/m8 (group)
     control_flow::group_ff, // 0xFF: INC/DEC/CALL/JMP/PUSH r/m16 (group)
 ];
