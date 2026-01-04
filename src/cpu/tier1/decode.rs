@@ -471,6 +471,24 @@ impl Cpu {
                 instr = instr.with_src(Operand::imm16(imm)).with_length(3);
             }
 
+            // INT3 (0xCC) - no operands
+            0xCC => {
+                // No operands needed
+                instr = instr.with_length(1);
+            }
+
+            // INT n (0xCD) - 8-bit interrupt number
+            0xCD => {
+                let int_num = self.fetch_u8(mem);
+                instr = instr.with_src(Operand::imm8(int_num)).with_length(2);
+            }
+
+            // IRET (0xCF) - no operands
+            0xCF => {
+                // No operands needed
+                instr = instr.with_length(1);
+            }
+
             // Group 0x80/0x82: Arithmetic r/m8, imm8
             0x80 | 0x82 => {
                 let modrm = self.fetch_u8(mem);

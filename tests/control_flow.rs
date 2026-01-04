@@ -975,3 +975,222 @@ fn test_jcxz_not_taken() {
     harness.step(); // MOV AX, 0x1234
     assert_eq!(harness.cpu.regs[0], 0x1234);
 }
+
+#[test]
+fn test_int_n() {
+    let mut harness = CpuHarness::new();
+
+    // Set up interrupt vector table (IVT) entry for interrupt 0x10
+    // IVT entry 0x10 is at address 0x10 * 4 = 0x40
+    // Format: [offset_low, offset_high, segment_low, segment_high]
+    // Let's set it to 0x0500:0x0100
+    harness.mem.write_u16(0x40, 0x0100); // Offset = 0x0100
+    harness.mem.write_u16(0x42, 0x0500); // Segment = 0x0500
+
+    // Load program at CS=0x0100
+    harness.load_program(&[0xCD, 0x10], 0x0100);
+
+    // Set up remaining state
+    harness.cpu.regs[4] = 0x2000; // SP = 0x2000 (avoid overlap with program)
+    harness.cpu.write_seg(2, 0x0200); // SS = 0x0200
+
+    // Set some flags to verify they are pushed
+    harness.cpu.set_flag(ezpc::cpu::Cpu::ZF, true);
+    harness.cpu.set_flag(ezpc::cpu::Cpu::CF, true);
+    harness.cpu.set_flag(ezpc::cpu::Cpu::TF, true); // This should be cleared
+    harness.cpu.set_flag(ezpc::cpu::Cpu::IF, true); // This should be cleared
+    let flags_before = harness.cpu.get_flags();
+
+    harness.step(); // INT 0x10
+
+    // Verify CS:IP was loaded from IVT
+    assert_eq!(harness.cpu.read_seg(1), 0x0500); // CS
+    assert_eq!(harness.cpu.ip, 0x0100); // IP
+
+    // Verify stack has FLAGS, CS, IP (in that order, pushed last to first)
+    // Stack grows downward: SP was 0x2000, now should be 0x1FFA (0x2000 - 6)
+    assert_eq!(harness.cpu.regs[4], 0x1FFA); // SP
+
+    // Verify values on stack (remember: pushed FLAGS, CS, IP)
+    // Address SS:0x1FFA has IP (pushed last)
+    // Address SS:0x1FFC has CS (pushed second)
+    // Address SS:0x1FFE has FLAGS (pushed first)
+    let stacked_ip = harness.cpu.read_mem16(&harness.mem, 0x0200, 0x1FFA);
+    let stacked_cs = harness.cpu.read_mem16(&harness.mem, 0x0200, 0x1FFC);
+    let stacked_flags = harness.cpu.read_mem16(&harness.mem, 0x0200, 0x1FFE);
+
+    assert_eq!(stacked_ip, 2); // Return address (IP after INT instruction)
+    assert_eq!(stacked_cs, 0x0100); // Old CS
+    assert_eq!(stacked_flags, flags_before); // Flags before INT
+
+    // Verify TF and IF were cleared
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::TF));
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::IF));
+
+    // Verify other flags are preserved
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF));
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF));
+}
+
+#[test]
+fn test_int3() {
+    let mut harness = CpuHarness::new();
+
+    // Set up interrupt vector table (IVT) entry for interrupt 3 (breakpoint)
+    // IVT entry 3 is at address 3 * 4 = 0x0C
+    // Format: [offset_low, offset_high, segment_low, segment_high]
+    // Let's set it to 0x0600:0x0200
+    harness.mem.write_u16(0x0C, 0x0200); // Offset = 0x0200
+    harness.mem.write_u16(0x0E, 0x0600); // Segment = 0x0600
+
+    // Load program at CS=0x0100: INT3 (0xCC - only 1 byte!)
+    harness.load_program(&[0xCC], 0x0100);
+
+    // Set up remaining state
+    harness.cpu.regs[4] = 0x2000; // SP = 0x2000 (avoid overlap with program)
+    harness.cpu.write_seg(2, 0x0200); // SS = 0x0200
+
+    // Set some flags
+    harness.cpu.set_flag(ezpc::cpu::Cpu::SF, true);
+    harness.cpu.set_flag(ezpc::cpu::Cpu::TF, true); // This should be cleared
+    harness.cpu.set_flag(ezpc::cpu::Cpu::IF, true); // This should be cleared
+    let flags_before = harness.cpu.get_flags();
+
+    harness.step(); // INT3
+
+    // Verify CS:IP was loaded from IVT entry 3
+    assert_eq!(harness.cpu.read_seg(1), 0x0600); // CS
+    assert_eq!(harness.cpu.ip, 0x0200); // IP
+
+    // Verify stack has FLAGS, CS, IP
+    assert_eq!(harness.cpu.regs[4], 0x1FFA); // SP
+
+    // Verify values on stack
+    let stacked_ip = harness.cpu.read_mem16(&harness.mem, 0x0200, 0x1FFA);
+    let stacked_cs = harness.cpu.read_mem16(&harness.mem, 0x0200, 0x1FFC);
+    let stacked_flags = harness.cpu.read_mem16(&harness.mem, 0x0200, 0x1FFE);
+
+    assert_eq!(stacked_ip, 1); // Return address (IP after INT3 - only 1 byte!)
+    assert_eq!(stacked_cs, 0x0100); // Old CS
+    assert_eq!(stacked_flags, flags_before); // Flags before INT3
+
+    // Verify TF and IF were cleared
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::TF));
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::IF));
+
+    // Verify other flags are preserved
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::SF));
+}
+
+#[test]
+fn test_iret() {
+    let mut harness = CpuHarness::new();
+
+    // Set up stack to simulate an interrupt return
+    harness.cpu.write_seg(2, 0x0200); // SS = 0x0200
+    harness.cpu.regs[4] = 0x1FFA; // SP = 0x1FFA (simulating 3 pushes)
+
+    // Push FLAGS, CS, IP onto stack (in that order)
+    // Simulate the state after an interrupt:
+    // - Return IP = 0x0300
+    // - Return CS = 0x0300
+    // - FLAGS = 0x0246 (ZF=1, PF=1, IF=1)
+    harness
+        .cpu
+        .write_mem16(&mut harness.mem, 0x0200, 0x1FFA, 0x0300); // IP
+    harness
+        .cpu
+        .write_mem16(&mut harness.mem, 0x0200, 0x1FFC, 0x0300); // CS
+    harness
+        .cpu
+        .write_mem16(&mut harness.mem, 0x0200, 0x1FFE, 0x0246); // FLAGS
+
+    // Set up current state (as if we're in an interrupt handler)
+    harness.cpu.write_seg(1, 0x0500); // CS = 0x0500 (interrupt handler segment)
+
+    // Load program: IRET (0xCF)
+    harness.load_program(&[0xCF], 0);
+
+    harness.step(); // IRET
+
+    // Verify CS:IP was restored
+    assert_eq!(harness.cpu.ip, 0x0300); // Restored IP
+    assert_eq!(harness.cpu.read_seg(1), 0x0300); // Restored CS
+
+    // Verify FLAGS were restored
+    let flags = harness.cpu.get_flags();
+    assert_eq!(flags, 0x0246); // Exact flags restored
+
+    // Verify individual flags from restored state
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF));
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::PF));
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::IF));
+
+    // Verify SP was adjusted (3 words popped)
+    assert_eq!(harness.cpu.regs[4], 0x2000); // SP = 0x1FFA + 6
+}
+
+#[test]
+fn test_int_then_iret() {
+    let mut harness = CpuHarness::new();
+
+    // Set up IVT entry for interrupt 0x20
+    // IVT entry 0x20 is at address 0x20 * 4 = 0x80
+    // Point it to address where we'll put an IRET instruction
+    harness.mem.write_u16(0x80, 0x0100); // Offset = 0x0100
+    harness.mem.write_u16(0x82, 0x0300); // Segment = 0x0300
+
+    // Put IRET instruction at the interrupt handler location (0x0300:0x0100)
+    let handler_addr = (0x0300_u32 << 4) + 0x0100;
+    harness.mem.write_u8(handler_addr, 0xCF); // IRET
+
+    // Load program at CS=0x0100: INT 0x20, then MOV AX, 0x1234
+    harness.load_program(
+        &[
+            0xCD, 0x20, // INT 0x20
+            0xB8, 0x34, 0x12, // MOV AX, 0x1234
+        ],
+        0x0100,
+    );
+
+    // Set up remaining state
+    harness.cpu.write_seg(2, 0x0200); // SS = 0x0200
+    harness.cpu.regs[4] = 0x2000; // SP = 0x2000 (avoid overlap with program)
+
+    // Set specific flags
+    harness.cpu.set_flag(ezpc::cpu::Cpu::ZF, true);
+    harness.cpu.set_flag(ezpc::cpu::Cpu::CF, false);
+    harness.cpu.set_flag(ezpc::cpu::Cpu::IF, true);
+    let initial_flags = harness.cpu.get_flags();
+
+    let initial_ip = harness.cpu.ip;
+
+    // Execute INT 0x20
+    harness.step();
+
+    // We should now be at the interrupt handler
+    assert_eq!(harness.cpu.read_seg(1), 0x0300); // CS
+    assert_eq!(harness.cpu.ip, 0x0100); // IP
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::IF)); // IF cleared by INT
+
+    // Execute IRET
+    harness.step();
+
+    // We should be back where we were, right after the INT instruction
+    assert_eq!(harness.cpu.read_seg(1), 0x0100); // CS restored
+    assert_eq!(harness.cpu.ip, initial_ip + 2); // IP = after INT instruction
+
+    // Flags should be restored (including IF)
+    let restored_flags = harness.cpu.get_flags();
+    assert_eq!(restored_flags, initial_flags); // Flags fully restored
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF));
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::CF));
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::IF)); // IF restored
+
+    // Stack should be back to original position
+    assert_eq!(harness.cpu.regs[4], 0x2000); // SP
+
+    // Continue execution - should execute MOV AX, 0x1234
+    harness.step();
+    assert_eq!(harness.cpu.regs[0], 0x1234); // AX
+}

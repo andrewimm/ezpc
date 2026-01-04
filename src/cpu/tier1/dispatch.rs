@@ -227,10 +227,10 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     invalid_opcode,             // 0xC9: LEAVE (80186+, not on 8088)
     control_flow::ret_far_imm,  // 0xCA: RETF imm16
     control_flow::ret_far,      // 0xCB: RETF
-    invalid_opcode,             // 0xCC: INT 3 (not implemented yet)
-    invalid_opcode,             // 0xCD: INT imm8 (not implemented yet)
+    control_flow::int3,         // 0xCC: INT 3
+    control_flow::int_n,        // 0xCD: INT imm8
     invalid_opcode,             // 0xCE: INTO (not implemented yet)
-    invalid_opcode,             // 0xCF: IRET (not implemented yet)
+    control_flow::iret,         // 0xCF: IRET
     // 0xD0-0xDF: Shifts and rotates
     invalid_opcode, // 0xD0: Shift r/m8, 1 (not implemented yet)
     invalid_opcode, // 0xD1: Shift r/m16, 1 (not implemented yet)
