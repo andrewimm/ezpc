@@ -220,13 +220,20 @@ impl MemoryBus {
     ///
     /// Called after each CPU instruction with the number of cycles consumed.
     /// Distributes the tick to MDA and all registered IO devices.
+    /// Devices can signal interrupts through the PIC reference.
     pub fn tick(&mut self, cycles: u16) {
+        // Extract separate mutable references to different fields
+        // The borrow checker allows this because they're disjoint borrows
+        let pic = &mut self.pic;
+        let mda = &mut self.mda;
+        let io_devices = &mut self.io_devices;
+
         // Update MDA
-        self.mda.tick(cycles);
+        mda.tick(cycles, pic);
 
         // Update all IO devices
-        for device in &mut self.io_devices {
-            device.tick(cycles);
+        for device in io_devices.iter_mut() {
+            device.tick(cycles, pic);
         }
     }
 }

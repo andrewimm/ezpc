@@ -103,7 +103,7 @@ impl Mda {
     }
 
     /// Update based on CPU cycles
-    pub fn tick(&mut self, cycles: u16) {
+    pub fn tick(&mut self, cycles: u16, _pic: &mut crate::components::pic::Pic) {
         self.cycle_count += cycles as u64;
 
         // TODO: Implement periodic framebuffer regeneration

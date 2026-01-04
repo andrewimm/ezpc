@@ -20,8 +20,9 @@ pub trait IoDevice {
     /// Update device state based on CPU cycles
     ///
     /// Called after each CPU instruction with the number of cycles consumed.
+    /// Devices can signal interrupts through the provided PIC reference.
     /// Default implementation does nothing - devices can override if needed.
-    fn tick(&mut self, _cycles: u16) {
+    fn tick(&mut self, _cycles: u16, _pic: &mut crate::components::pic::Pic) {
         // Default: do nothing
     }
 }
