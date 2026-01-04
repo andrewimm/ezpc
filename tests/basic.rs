@@ -32,6 +32,63 @@ fn test_mov_r16_imm() {
 }
 
 #[test]
+fn test_mov_r16_imm_all_registers() {
+    let mut harness = CpuHarness::new();
+    // Test all 16-bit registers: AX, CX, DX, BX, SP, BP, SI, DI
+    // MOV AX, 0x1111; MOV CX, 0x2222; MOV DX, 0x3333; MOV BX, 0x4444
+    // MOV SP, 0x5555; MOV BP, 0x6666; MOV SI, 0x7777; MOV DI, 0x8888
+    harness.load_program(
+        &[
+            0xB8, 0x11, 0x11, // MOV AX, 0x1111
+            0xB9, 0x22, 0x22, // MOV CX, 0x2222
+            0xBA, 0x33, 0x33, // MOV DX, 0x3333
+            0xBB, 0x44, 0x44, // MOV BX, 0x4444
+            0xBC, 0x55, 0x55, // MOV SP, 0x5555
+            0xBD, 0x66, 0x66, // MOV BP, 0x6666
+            0xBE, 0x77, 0x77, // MOV SI, 0x7777
+            0xBF, 0x88, 0x88, // MOV DI, 0x8888
+        ],
+        0,
+    );
+
+    // Execute and verify each MOV instruction
+    harness.step();
+    assert_eq!(harness.cpu.regs[0], 0x1111); // AX
+
+    harness.step();
+    assert_eq!(harness.cpu.regs[1], 0x2222); // CX
+
+    harness.step();
+    assert_eq!(harness.cpu.regs[2], 0x3333); // DX
+
+    harness.step();
+    assert_eq!(harness.cpu.regs[3], 0x4444); // BX
+
+    harness.step();
+    assert_eq!(harness.cpu.regs[4], 0x5555); // SP
+
+    harness.step();
+    assert_eq!(harness.cpu.regs[5], 0x6666); // BP
+
+    harness.step();
+    assert_eq!(harness.cpu.regs[6], 0x7777); // SI
+
+    harness.step();
+    assert_eq!(harness.cpu.regs[7], 0x8888); // DI
+}
+
+#[test]
+fn test_mov_bp_specific() {
+    let mut harness = CpuHarness::new();
+    // MOV BP, 0x0472 (the exact instruction from the BIOS)
+    harness.load_program(&[0xBD, 0x72, 0x04], 0);
+
+    harness.step();
+    assert_eq!(harness.cpu.regs[5], 0x0472); // BP
+    assert_eq!(harness.cpu.ip, 3);
+}
+
+#[test]
 fn test_mov_r8_imm() {
     let mut harness = CpuHarness::new();
     // MOV AL, 0x12; MOV AH, 0x34
