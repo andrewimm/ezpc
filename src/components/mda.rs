@@ -53,30 +53,30 @@ impl Mda {
     ///
     /// The ROM file is 8KB (4KB used) organized in two 2KB banks:
     /// - Bank 0 (0x0000-0x07FF): Top 8 scan lines (0-7) for all 256 characters
-    ///   - 0x0000-0x00FF: Scan line 0 for all chars
-    ///   - 0x0100-0x01FF: Scan line 1 for all chars
-    ///   - ... through scan line 7
+    ///   - Bytes 0-7: Char 0, scan lines 0-7
+    ///   - Bytes 8-15: Char 1, scan lines 0-7
+    ///   - ... (256 chars × 8 bytes = 2KB)
     /// - Bank 1 (0x0800-0x0FFF): Bottom 8 scan lines (8-15) for all 256 characters
-    ///   - 0x0800-0x08FF: Scan line 8 for all chars
-    ///   - 0x0900-0x09FF: Scan line 9 for all chars
-    ///   - ... through scan line 15
+    ///   - Bytes 0x0800-0x0807: Char 0, scan lines 8-15
+    ///   - Bytes 0x0808-0x080F: Char 1, scan lines 8-15
+    ///   - ... (256 chars × 8 bytes = 2KB)
     ///
-    /// MDA uses only the first 14 scan lines (0-13).
+    /// Characters are 8×16 pixels. MDA uses only the first 14 scan lines (0-13).
     fn load_font_rom() -> [u8; 256 * 14] {
         // Include the actual MDA character ROM at compile time
         const ROM_DATA: &[u8] = include_bytes!("../../roms/MDA_CHAR.bin");
 
         let mut font = [0u8; 256 * 14];
 
-        // Extract from two-bank format and reorganize to character-major
+        // Extract from two-bank character-major format
         for char_idx in 0..256 {
             for scan_line in 0..14 {
                 let rom_offset = if scan_line < 8 {
-                    // First bank: lines 0-7
-                    scan_line * 256 + char_idx
+                    // Bank 0: char_idx * 8 bytes + scan_line
+                    char_idx * 8 + scan_line
                 } else {
-                    // Second bank: lines 8-13 (at offset 0x0800)
-                    0x0800 + (scan_line - 8) * 256 + char_idx
+                    // Bank 1: 0x0800 + char_idx * 8 bytes + (scan_line - 8)
+                    0x0800 + char_idx * 8 + (scan_line - 8)
                 };
 
                 // Our font is organized: char 0's all scanlines, char 1's all scanlines, etc.
