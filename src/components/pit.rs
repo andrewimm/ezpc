@@ -252,6 +252,36 @@ impl Pit {
         counter.byte_toggle = false; // Reset toggle on new control word
         counter.null_count = true; // Wait for count to be loaded
     }
+
+    /// Update PIT state based on CPU cycles
+    /// Returns true if IRQ0 should be raised
+    fn tick_internal(&mut self, cpu_cycles: u16) -> bool {
+        // Accumulate CPU cycles and convert to PIT ticks
+        self.cycle_accumulator += cpu_cycles;
+
+        let mut irq0_triggered = false;
+
+        // Process accumulated PIT ticks
+        while self.cycle_accumulator >= CPU_CYCLES_PER_PIT_TICK {
+            self.cycle_accumulator -= CPU_CYCLES_PER_PIT_TICK;
+
+            // Tick counter 0 (system timer)
+            if self.counters[0].tick() {
+                // Counter 0 wrapped - raise IRQ0
+                // In mode 2 (rate generator) or mode 3 (square wave),
+                // output pulse occurs on reload
+                irq0_triggered = true;
+            }
+
+            // Tick counter 1 (DRAM refresh) - we don't care about output
+            self.counters[1].tick();
+
+            // Tick counter 2 (speaker) - stub for now
+            self.counters[2].tick();
+        }
+
+        irq0_triggered
+    }
 }
 
 impl IoDevice for Pit {
@@ -279,6 +309,19 @@ impl IoDevice for Pit {
             PIT_COUNTER_2 => self.counters[2].write_count(value),
             PIT_CONTROL => self.write_control(value),
             _ => {}
+        }
+    }
+
+    fn tick(&mut self, cycles: u16, pic: &mut Pic) {
+        if self.tick_internal(cycles) {
+            // Counter 0 triggered - raise IRQ0
+            pic.set_irq_level(0, true);
+            self.irq0_pending = true;
+        } else if self.irq0_pending {
+            // Lower IRQ0 after it's been raised
+            // Edge-triggered mode means we raise then lower
+            pic.set_irq_level(0, false);
+            self.irq0_pending = false;
         }
     }
 }
