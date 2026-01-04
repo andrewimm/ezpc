@@ -101,13 +101,17 @@ impl Counter {
     fn write_count(&mut self, value: u8) {
         match self.access_mode {
             AccessMode::LowByteOnly => {
-                self.reload_value = (self.reload_value & 0xFF00) | (value as u16);
-                self.count = self.reload_value;
+                // For 8-bit modes, 0 means 256 (0x100)
+                let count = if value == 0 { 0x100 } else { value as u16 };
+                self.reload_value = count;
+                self.count = count;
                 self.null_count = false;
             }
             AccessMode::HighByteOnly => {
-                self.reload_value = (self.reload_value & 0x00FF) | ((value as u16) << 8);
-                self.count = self.reload_value;
+                // For 8-bit modes, 0 means 256 (0x100)
+                let count = if value == 0 { 0x100 } else { value as u16 };
+                self.reload_value = count;
+                self.count = count;
                 self.null_count = false;
             }
             AccessMode::LowThenHigh => {
@@ -118,6 +122,8 @@ impl Counter {
                 } else {
                     // Receiving high byte
                     self.reload_value = (self.reload_value & 0x00FF) | ((value as u16) << 8);
+                    // For 16-bit mode, 0x0000 means 65536, but we store 0 as a special marker
+                    // The tick() method will handle reload_value == 0 specially
                     self.count = self.reload_value;
                     self.byte_toggle = false;
                     self.null_count = false;
@@ -166,12 +172,23 @@ impl Counter {
 
         if self.count == 0 {
             // Reload and signal wrap
-            self.count = self.reload_value;
+            // Special case: reload_value of 0 in 16-bit mode means 65536
+            // We reload to 0xFFFF (one less, since we're about to tick)
+            self.count = if self.reload_value == 0 {
+                0xFFFF // Will decrement to 0xFFFE on next tick
+            } else {
+                self.reload_value
+            };
             return true;
         } else {
             self.count -= 1;
             if self.count == 0 {
-                self.count = self.reload_value;
+                // Same reload logic
+                self.count = if self.reload_value == 0 {
+                    0xFFFF
+                } else {
+                    self.reload_value
+                };
                 return true;
             }
         }

@@ -78,7 +78,7 @@ impl EmulatorState {
 
         // Step CPU and update peripherals with cycle counts
         // For now, execute a fixed number of instructions per frame
-        const INSTRUCTIONS_PER_FRAME: usize = 1000; // Placeholder
+        const INSTRUCTIONS_PER_FRAME: usize = 20; // Placeholder
 
         for _ in 0..INSTRUCTIONS_PER_FRAME {
             let cycles = self.cpu.step(&mut self.memory);
