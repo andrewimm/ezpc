@@ -25,10 +25,18 @@ impl EmulatorState {
         device: wgpu::Device,
         queue: wgpu::Queue,
         surface_format: wgpu::TextureFormat,
+        rom_data: Option<Vec<u8>>,
     ) -> Self {
+        let mut memory = MemoryBus::new();
+
+        // Load ROM if provided
+        if let Some(rom) = rom_data {
+            memory.load_rom(&rom);
+        }
+
         Self {
             cpu: Cpu::new(),
-            memory: MemoryBus::new(),
+            memory,
             renderer: FramebufferRenderer::new(device, queue, surface_format),
             last_frame_time: Instant::now(),
             target_frame_duration: Duration::from_micros(16667), // 60 FPS (~16.67ms)

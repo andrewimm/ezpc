@@ -14,14 +14,16 @@ struct App {
     window: Option<Arc<Window>>,
     surface: Option<wgpu::Surface<'static>>,
     emulator: Option<EmulatorState>,
+    rom_data: Option<Vec<u8>>,
 }
 
-impl Default for App {
-    fn default() -> Self {
+impl App {
+    fn new(rom_data: Option<Vec<u8>>) -> Self {
         Self {
             window: None,
             surface: None,
             emulator: None,
+            rom_data,
         }
     }
 }
@@ -92,8 +94,8 @@ impl ApplicationHandler for App {
 
         surface.configure(&device, &config);
 
-        // Create emulator state
-        let emulator = EmulatorState::new(device, queue, surface_format);
+        // Create emulator state with ROM data
+        let emulator = EmulatorState::new(device, queue, surface_format, self.rom_data.take());
 
         // Store state
         self.window = Some(window);
@@ -156,12 +158,33 @@ impl ApplicationHandler for App {
 }
 
 fn main() {
+    // Parse command-line arguments
+    let args: Vec<String> = std::env::args().collect();
+
+    // Load ROM file if provided as the last argument
+    let rom_data = if args.len() > 1 {
+        let rom_path = &args[args.len() - 1];
+        match std::fs::read(rom_path) {
+            Ok(data) => {
+                println!("Loaded ROM: {} ({} bytes)", rom_path, data.len());
+                Some(data)
+            }
+            Err(e) => {
+                eprintln!("Failed to load ROM file '{}': {}", rom_path, e);
+                std::process::exit(1);
+            }
+        }
+    } else {
+        println!("No ROM file provided, starting with empty ROM");
+        None
+    };
+
     // Create event loop
     let event_loop = EventLoop::new().expect("Failed to create event loop");
     event_loop.set_control_flow(ControlFlow::Poll);
 
     // Create and run app
-    let mut app = App::default();
+    let mut app = App::new(rom_data);
     event_loop
         .run_app(&mut app)
         .expect("Failed to run event loop");

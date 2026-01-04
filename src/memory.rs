@@ -53,6 +53,28 @@ impl MemoryBus {
         }
     }
 
+    /// Load ROM data at the end of ROM space
+    ///
+    /// The ROM is loaded at the end of the 64KB ROM area (0xF0000-0xFFFFF),
+    /// ensuring the reset vector at 0xFFFF0 contains the ROM's code.
+    pub fn load_rom(&mut self, rom_data: &[u8]) {
+        if rom_data.is_empty() {
+            return;
+        }
+
+        if rom_data.len() > self.rom.len() {
+            panic!(
+                "ROM size {} bytes exceeds ROM space of {} bytes",
+                rom_data.len(),
+                self.rom.len()
+            );
+        }
+
+        // Load ROM at the end of ROM space
+        let offset = self.rom.len() - rom_data.len();
+        self.rom[offset..].copy_from_slice(rom_data);
+    }
+
     /// Read a byte from memory
     #[inline(always)]
     pub fn read_u8(&self, addr: u32) -> u8 {
