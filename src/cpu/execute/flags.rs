@@ -45,10 +45,15 @@ pub fn cli(cpu: &mut Cpu, _mem: &mut MemoryBus, _instr: &DecodedInstruction) {
 ///
 /// Note: On the 8088, interrupt recognition is delayed by one instruction
 /// after STI to allow STI;IRET sequences to execute before taking an interrupt.
+/// This delay only applies when actually transitioning from IF=0 to IF=1.
 #[inline(always)]
 pub fn sti(cpu: &mut Cpu, _mem: &mut MemoryBus, _instr: &DecodedInstruction) {
+    // Only set delay if interrupts were previously disabled
+    let was_disabled = !cpu.get_flag(Cpu::IF);
     cpu.set_flag(Cpu::IF, true);
-    cpu.set_interrupt_delay();
+    if was_disabled {
+        cpu.set_interrupt_delay();
+    }
 }
 
 /// Handler for CLD (0xFC) - Clear Direction Flag

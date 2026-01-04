@@ -1329,3 +1329,63 @@ fn test_hardware_interrupt_when_disabled() {
     // PIC should still have pending interrupt
     assert!(harness.mem.pic().intr_out());
 }
+
+#[test]
+fn test_sti_no_delay_when_already_enabled() {
+    let mut harness = CpuHarness::new();
+
+    // Set up interrupt vector for IRQ0 (INT 0x08)
+    harness.mem.write_u16(0x20, 0x1000);
+    harness.mem.write_u16(0x22, 0x0100);
+
+    // Set up interrupt handler
+    harness.mem.write_u8(0x01000 + 0x1000, 0xB8); // MOV AX, imm16
+    harness.mem.write_u8(0x01000 + 0x1001, 0xCD);
+    harness.mem.write_u8(0x01000 + 0x1002, 0xAB);
+    harness.mem.write_u8(0x01000 + 0x1003, 0xCF); // IRET
+
+    // Main program: STI; STI; NOP
+    // First STI enables interrupts (delay set)
+    // Second STI is redundant (no delay since IF already 1)
+    // After second STI, interrupt should be taken immediately
+    harness.load_program(
+        &[
+            0xFB, // STI - enable interrupts (delay set)
+            0xFB, // STI - redundant (no delay)
+            0x90, // NOP - should not reach here
+        ],
+        0,
+    );
+
+    harness.cpu.regs[4] = 0x2000; // SP
+    harness.cpu.regs[0] = 0x0000; // AX
+
+    // Unmask and trigger IRQ0
+    harness.mem.pic_mut().set_imr(0x00);
+    harness.mem.pic_mut().set_irq_level(0, false);
+    harness.mem.pic_mut().set_irq_level(0, true);
+
+    assert!(harness.mem.pic().intr_out());
+
+    // Execute first STI - enables interrupts, sets delay
+    harness.step();
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::IF));
+
+    // Execute second STI - IF already set, no delay should be added
+    // After this instruction, interrupt should be recognized
+    harness.step();
+
+    // We should be in the interrupt handler now
+    assert_eq!(harness.cpu.read_seg(1), 0x0100); // CS
+    assert_eq!(harness.cpu.ip, 0x1000); // IP
+
+    // Execute handler
+    harness.step(); // MOV AX, 0xABCD
+    assert_eq!(harness.cpu.regs[0], 0xABCD);
+
+    harness.step(); // IRET
+
+    // Should return to IP=2 (after both STIs, before NOP)
+    assert_eq!(harness.cpu.ip, 2);
+    assert_eq!(harness.cpu.read_seg(1), 0x0000);
+}
