@@ -51,23 +51,34 @@ impl Mda {
 
     /// Load the IBM MDA character ROM font
     ///
-    /// The ROM file is 8KB organized as scan-line-major:
-    /// - Bytes 0-255: Scan line 0 for all 256 characters
-    /// - Bytes 256-511: Scan line 1 for all 256 characters
-    /// - ... (32 scan lines total)
+    /// The ROM file is 8KB (4KB used) organized in two 2KB banks:
+    /// - Bank 0 (0x0000-0x07FF): Top 8 scan lines (0-7) for all 256 characters
+    ///   - 0x0000-0x00FF: Scan line 0 for all chars
+    ///   - 0x0100-0x01FF: Scan line 1 for all chars
+    ///   - ... through scan line 7
+    /// - Bank 1 (0x0800-0x0FFF): Bottom 8 scan lines (8-15) for all 256 characters
+    ///   - 0x0800-0x08FF: Scan line 8 for all chars
+    ///   - 0x0900-0x09FF: Scan line 9 for all chars
+    ///   - ... through scan line 15
     ///
-    /// MDA uses only the first 14 scan lines.
+    /// MDA uses only the first 14 scan lines (0-13).
     fn load_font_rom() -> [u8; 256 * 14] {
         // Include the actual MDA character ROM at compile time
         const ROM_DATA: &[u8] = include_bytes!("../../roms/MDA_CHAR.bin");
 
         let mut font = [0u8; 256 * 14];
 
-        // Extract scan-line-major data and reorganize to character-major
+        // Extract from two-bank format and reorganize to character-major
         for char_idx in 0..256 {
             for scan_line in 0..14 {
-                // ROM is organized: all chars' scanline 0, then all chars' scanline 1, etc.
-                let rom_offset = scan_line * 256 + char_idx;
+                let rom_offset = if scan_line < 8 {
+                    // First bank: lines 0-7
+                    scan_line * 256 + char_idx
+                } else {
+                    // Second bank: lines 8-13 (at offset 0x0800)
+                    0x0800 + (scan_line - 8) * 256 + char_idx
+                };
+
                 // Our font is organized: char 0's all scanlines, char 1's all scanlines, etc.
                 let font_offset = char_idx * 14 + scan_line;
 
