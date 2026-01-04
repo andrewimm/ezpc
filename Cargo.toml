@@ -1,6 +1,10 @@
 [package]
 name = "ezpc"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
+winit = "0.30"
+wgpu = "23.0"
+pollster = "0.3"
+proc-macro2 = "=1.0.92"
