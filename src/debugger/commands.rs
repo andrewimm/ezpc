@@ -339,14 +339,25 @@ fn handle_query(cmd: &str) -> String {
 /// Insert breakpoint: Z0,<addr>,<kind>
 fn insert_breakpoint(debugger: &mut GdbDebugger, cmd: &str) -> String {
     // Parse: Z0,<addr>,<kind>
-    let parts: Vec<&str> = cmd[2..].split(',').collect();
+    // Skip "Z0," (3 chars) to get "addr,kind"
+    let parts: Vec<&str> = cmd[3..].split(',').collect();
     if parts.len() < 2 {
+        eprintln!(
+            "GDB: Breakpoint parse error - expected at least 2 parts, got {}",
+            parts.len()
+        );
         return "E01".to_string();
     }
 
     let addr = match u32::from_str_radix(parts[0], 16) {
         Ok(a) => a,
-        Err(_) => return "E01".to_string(),
+        Err(e) => {
+            eprintln!(
+                "GDB: Breakpoint parse error - invalid address '{}': {:?}",
+                parts[0], e
+            );
+            return "E01".to_string();
+        }
     };
 
     eprintln!("GDB: Setting breakpoint at linear address 0x{:08x}", addr);
@@ -357,16 +368,28 @@ fn insert_breakpoint(debugger: &mut GdbDebugger, cmd: &str) -> String {
 /// Remove breakpoint: z0,<addr>,<kind>
 fn remove_breakpoint(debugger: &mut GdbDebugger, cmd: &str) -> String {
     // Parse: z0,<addr>,<kind>
-    let parts: Vec<&str> = cmd[2..].split(',').collect();
+    // Skip "z0," (3 chars) to get "addr,kind"
+    let parts: Vec<&str> = cmd[3..].split(',').collect();
     if parts.len() < 2 {
+        eprintln!(
+            "GDB: Remove breakpoint parse error - expected at least 2 parts, got {}",
+            parts.len()
+        );
         return "E01".to_string();
     }
 
     let addr = match u32::from_str_radix(parts[0], 16) {
         Ok(a) => a,
-        Err(_) => return "E01".to_string(),
+        Err(e) => {
+            eprintln!(
+                "GDB: Remove breakpoint parse error - invalid address '{}': {:?}",
+                parts[0], e
+            );
+            return "E01".to_string();
+        }
     };
 
+    eprintln!("GDB: Removing breakpoint at linear address 0x{:08x}", addr);
     debugger.remove_breakpoint(addr);
     "OK".to_string()
 }
