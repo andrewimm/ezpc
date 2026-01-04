@@ -2,8 +2,8 @@
 //!
 //! Main entry point for the emulator application.
 
+use ezpc::emulator::scancode::physical_key_to_scancode;
 use ezpc::emulator::EmulatorState;
-use ezpc::scancode::physical_key_to_scancode;
 use std::sync::Arc;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, WindowEvent};

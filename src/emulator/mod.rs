@@ -11,6 +11,8 @@ use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
 pub mod graphics;
+pub mod scancode;
+
 use graphics::FramebufferRenderer;
 
 /// Main emulator state
