@@ -42,9 +42,13 @@ pub fn cli(cpu: &mut Cpu, _mem: &mut MemoryBus, _instr: &DecodedInstruction) {
 /// Sets the interrupt enable flag (IF) to 1.
 /// When IF is set, maskable hardware interrupts are enabled.
 /// Takes 2 cycles on the 8088.
+///
+/// Note: On the 8088, interrupt recognition is delayed by one instruction
+/// after STI to allow STI;IRET sequences to execute before taking an interrupt.
 #[inline(always)]
 pub fn sti(cpu: &mut Cpu, _mem: &mut MemoryBus, _instr: &DecodedInstruction) {
     cpu.set_flag(Cpu::IF, true);
+    cpu.set_interrupt_delay();
 }
 
 /// Handler for CLD (0xFC) - Clear Direction Flag

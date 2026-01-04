@@ -468,24 +468,20 @@ pub fn jcxz(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
     }
 }
 
-/// INT n - Software interrupt with 8-bit interrupt number
-/// Opcode: 0xCD
+/// Common interrupt entry sequence for both software and hardware interrupts
 ///
 /// Stack operation: PUSH FLAGS, PUSH CS, PUSH IP, then load CS:IP from IVT
 /// The interrupt vector table (IVT) is located at 0000:0000
 /// Each entry is 4 bytes: offset (word) followed by segment (word)
 /// Vector for interrupt n is at address n*4
-pub fn int_n(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+pub(crate) fn enter_interrupt(cpu: &mut Cpu, mem: &mut MemoryBus, vector: u8) {
     use super::stack::push_word;
-
-    // Get interrupt number from immediate operand
-    let int_num = instr.src.value as u8;
 
     // Push FLAGS register
     let flags = cpu.get_flags();
     push_word(cpu, mem, flags);
 
-    // Clear TF and IF flags
+    // Clear TF and IF flags (disable interrupts during handler)
     cpu.set_flag(Cpu::TF, false);
     cpu.set_flag(Cpu::IF, false);
 
@@ -500,7 +496,7 @@ pub fn int_n(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
     // Load new CS:IP from interrupt vector table
     // IVT is at 0000:0000, each entry is 4 bytes
     // Entry n is at address n*4: [offset_low, offset_high, segment_low, segment_high]
-    let ivt_addr = (int_num as u32) * 4;
+    let ivt_addr = (vector as u32) * 4;
     let new_ip = mem.read_u16(ivt_addr);
     let new_cs = mem.read_u16(ivt_addr + 2);
 
@@ -509,39 +505,29 @@ pub fn int_n(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
     cpu.ip = new_ip;
 }
 
+/// INT n - Software interrupt with 8-bit interrupt number
+/// Opcode: 0xCD
+///
+/// Stack operation: PUSH FLAGS, PUSH CS, PUSH IP, then load CS:IP from IVT
+/// The interrupt vector table (IVT) is located at 0000:0000
+/// Each entry is 4 bytes: offset (word) followed by segment (word)
+/// Vector for interrupt n is at address n*4
+pub fn int_n(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    // Get interrupt number from immediate operand
+    let int_num = instr.src.value as u8;
+
+    // Use common interrupt entry sequence
+    enter_interrupt(cpu, mem, int_num);
+}
+
 /// INT3 - Breakpoint interrupt
 /// Opcode: 0xCC
 ///
 /// This is a special 1-byte form of INT 3, commonly used for breakpoints
 /// Behavior is identical to INT 3 but encoded in a single byte
 pub fn int3(cpu: &mut Cpu, mem: &mut MemoryBus, _instr: &DecodedInstruction) {
-    use super::stack::push_word;
-
-    // Push FLAGS register
-    let flags = cpu.get_flags();
-    push_word(cpu, mem, flags);
-
-    // Clear TF and IF flags
-    cpu.set_flag(Cpu::TF, false);
-    cpu.set_flag(Cpu::IF, false);
-
-    // Push CS
-    let return_cs = cpu.read_seg(1); // CS
-    push_word(cpu, mem, return_cs);
-
-    // Push IP (return address)
-    let return_ip = cpu.ip;
-    push_word(cpu, mem, return_ip);
-
-    // Load new CS:IP from interrupt vector 3
-    // IVT entry 3 is at address 3*4 = 12 (0x0C)
-    let ivt_addr = 3 * 4;
-    let new_ip = mem.read_u16(ivt_addr);
-    let new_cs = mem.read_u16(ivt_addr + 2);
-
-    // Set new CS:IP
-    cpu.write_seg(1, new_cs); // CS
-    cpu.ip = new_ip;
+    // Use common interrupt entry sequence with vector 3
+    enter_interrupt(cpu, mem, 3);
 }
 
 /// IRET - Return from interrupt

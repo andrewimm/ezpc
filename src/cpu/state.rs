@@ -68,6 +68,10 @@ pub struct Cpu {
 
     /// IP of the repeat prefix byte (used to loop back for REP)
     pub repeat_ip: u16,
+
+    /// Delay interrupt recognition by one instruction (set by STI)
+    /// The 8088 delays interrupt recognition after STI to allow STI;IRET sequences
+    delay_interrupt: bool,
 }
 
 /// Repeat prefix type for string operations
@@ -123,6 +127,7 @@ impl Cpu {
             segment_override: None,
             repeat_prefix: RepeatPrefix::None,
             repeat_ip: 0,
+            delay_interrupt: false,
         }
     }
 
@@ -969,5 +974,50 @@ impl Cpu {
                 break;
             }
         }
+
+        // After instruction execution, check for hardware interrupts
+        self.check_interrupts(mem);
+    }
+
+    /// Check and handle hardware interrupts from the PIC
+    ///
+    /// Called at the end of each instruction. If interrupts are enabled (IF=1)
+    /// and the PIC has a pending interrupt, this will acknowledge the interrupt
+    /// and transfer control to the interrupt handler.
+    ///
+    /// Note: After STI, interrupt recognition is delayed by one instruction
+    fn check_interrupts(&mut self, mem: &mut MemoryBus) {
+        use crate::cpu::execute::control_flow::enter_interrupt;
+
+        // If interrupt recognition is delayed (after STI), skip this check
+        // and clear the delay flag for next instruction
+        if self.delay_interrupt {
+            self.delay_interrupt = false;
+            return;
+        }
+
+        // Only process interrupts if the interrupt flag is set
+        if !self.get_flag(Self::IF) {
+            return;
+        }
+
+        // Check if PIC has a pending interrupt
+        if !mem.pic().intr_out() {
+            return;
+        }
+
+        // Acknowledge interrupt and get vector number
+        let vector = mem.pic_mut().inta();
+
+        // Use common interrupt entry sequence
+        enter_interrupt(self, mem, vector);
+    }
+
+    /// Set the interrupt delay flag (called by STI)
+    ///
+    /// This delays hardware interrupt recognition by one instruction,
+    /// allowing STI;IRET sequences to work correctly
+    pub fn set_interrupt_delay(&mut self) {
+        self.delay_interrupt = true;
     }
 }

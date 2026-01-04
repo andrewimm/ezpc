@@ -1194,3 +1194,138 @@ fn test_int_then_iret() {
     harness.step();
     assert_eq!(harness.cpu.regs[0], 0x1234); // AX
 }
+
+#[test]
+fn test_hardware_interrupt_from_pic() {
+    let mut harness = CpuHarness::new();
+
+    // Set up interrupt vector for IRQ0 (INT 0x08) at address 0x08 * 4 = 0x20
+    // IVT entry: offset=0x1000, segment=0x0100
+    harness.mem.write_u16(0x20, 0x1000); // Offset
+    harness.mem.write_u16(0x22, 0x0100); // Segment
+
+    // Set up interrupt handler at 0x0100:0x1000
+    // Handler: MOV AX, 0xABCD; IRET
+    harness.mem.write_u8(0x01000 + 0x1000, 0xB8); // MOV AX, imm16
+    harness.mem.write_u8(0x01000 + 0x1001, 0xCD);
+    harness.mem.write_u8(0x01000 + 0x1002, 0xAB);
+    harness.mem.write_u8(0x01000 + 0x1003, 0xCF); // IRET
+
+    // Main program: STI; NOP; MOV BX, 0x1234
+    harness.load_program(
+        &[
+            0xFB, // STI - enable interrupts
+            0x90, // NOP - interrupt will be checked after this
+            0xBB, 0x34, 0x12, // MOV BX, 0x1234
+        ],
+        0,
+    );
+
+    // Initial state
+    harness.cpu.regs[4] = 0x2000; // SP
+    harness.cpu.regs[0] = 0x0000; // AX (should be changed by handler)
+    harness.cpu.regs[3] = 0x0000; // BX (for verification)
+
+    // Unmask IRQ0 on the PIC
+    harness.mem.pic_mut().set_imr(0x00); // Enable all interrupts
+
+    // Trigger IRQ0 (rising edge)
+    harness.mem.pic_mut().set_irq_level(0, false);
+    harness.mem.pic_mut().set_irq_level(0, true);
+
+    // Verify PIC has pending interrupt
+    assert!(harness.mem.pic().intr_out());
+
+    // Execute STI - enables interrupts
+    harness.step();
+
+    // Verify IF flag is set
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::IF));
+
+    // Execute NOP - after this, hardware interrupt check occurs
+    harness.step();
+
+    // After NOP completes, check_interrupts() should have:
+    // 1. Detected the pending interrupt
+    // 2. Pushed FLAGS (with IF=1), CS, IP
+    // 3. Jumped to interrupt handler at 0x0100:0x1000
+    // Now we should be in the handler, with IF cleared
+
+    // Verify we jumped to the handler
+    assert_eq!(harness.cpu.read_seg(1), 0x0100); // CS = 0x0100
+    assert_eq!(harness.cpu.ip, 0x1000); // IP = 0x1000
+
+    // Verify IF was cleared by interrupt entry
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::IF));
+
+    // Execute handler: MOV AX, 0xABCD
+    harness.step();
+    assert_eq!(harness.cpu.regs[0], 0xABCD); // AX set by handler
+
+    // Execute IRET - should return to main program
+    harness.step();
+
+    // After IRET, we're back in main program
+    assert_eq!(harness.cpu.ip, 2); // After STI and NOP
+    assert_eq!(harness.cpu.read_seg(1), 0x0000); // CS restored
+
+    // Verify IF flag is restored (was set by STI before interrupt)
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::IF));
+
+    // PIC should no longer have pending interrupt
+    assert!(!harness.mem.pic().intr_out());
+
+    // Continue execution - should execute MOV BX, 0x1234
+    harness.step();
+    assert_eq!(harness.cpu.regs[3], 0x1234); // BX
+}
+
+#[test]
+fn test_hardware_interrupt_when_disabled() {
+    let mut harness = CpuHarness::new();
+
+    // Set up interrupt vector for IRQ0 (INT 0x08)
+    harness.mem.write_u16(0x20, 0x1000);
+    harness.mem.write_u16(0x22, 0x0100);
+
+    // Set up interrupt handler
+    harness.mem.write_u8(0x01000 + 0x1000, 0xB8); // MOV AX, imm16
+    harness.mem.write_u8(0x01000 + 0x1001, 0xCD);
+    harness.mem.write_u8(0x01000 + 0x1002, 0xAB);
+    harness.mem.write_u8(0x01000 + 0x1003, 0xCF); // IRET
+
+    // Main program: CLI; NOP; NOP
+    harness.load_program(
+        &[
+            0xFA, // CLI - disable interrupts
+            0x90, // NOP
+            0x90, // NOP
+        ],
+        0,
+    );
+
+    harness.cpu.regs[0] = 0x0000; // AX
+
+    // Unmask IRQ0 and trigger it
+    harness.mem.pic_mut().set_imr(0x00);
+    harness.mem.pic_mut().set_irq_level(0, false);
+    harness.mem.pic_mut().set_irq_level(0, true);
+
+    assert!(harness.mem.pic().intr_out());
+
+    // Execute CLI - disables interrupts
+    harness.step();
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::IF));
+
+    // Execute NOP - interrupt should NOT be handled (IF=0)
+    harness.step();
+
+    // AX should still be 0 (handler didn't run)
+    assert_eq!(harness.cpu.regs[0], 0x0000);
+
+    // IP should be 2 (after CLI and NOP)
+    assert_eq!(harness.cpu.ip, 2);
+
+    // PIC should still have pending interrupt
+    assert!(harness.mem.pic().intr_out());
+}
