@@ -122,57 +122,43 @@ fn read_single_register(cpu: &mut Cpu, cmd: &str) -> String {
         _ => return "E01".to_string(),
     };
 
-    // Return as little-endian hex
-    format!("{:02x}{:02x}", value & 0xFF, value >> 8)
+    // Return as 32-bit little-endian hex (upper 16 bits = 0 for 8086)
+    format!("{:02x}{:02x}0000", value & 0xFF, (value >> 8) & 0xFF)
 }
 
 /// Read all registers and return as hex string
 ///
 /// GDB expects registers in this order for i8086:
 /// AX, CX, DX, BX, SP, BP, SI, DI, IP, FLAGS, CS, SS, DS, ES, FS, GS
-/// Each register is 16-bit little-endian (4 hex digits, bytes swapped)
+/// Each register is 32-bit little-endian (8 hex chars)
+/// For 8086's 16-bit registers, upper 16 bits are 0
 fn read_all_registers(cpu: &mut Cpu) -> String {
     let mut result = String::new();
 
+    // Helper to format 16-bit value as 32-bit little-endian
+    let format_reg =
+        |val: u16| -> String { format!("{:02x}{:02x}0000", val & 0xFF, (val >> 8) & 0xFF) };
+
     // General purpose registers (AX, CX, DX, BX, SP, BP, SI, DI)
     for i in 0..8 {
-        let reg = cpu.regs[i];
-        result.push_str(&format!("{:02x}{:02x}", reg & 0xFF, reg >> 8));
+        result.push_str(&format_reg(cpu.regs[i]));
     }
 
-    // IP
-    result.push_str(&format!("{:02x}{:02x}", cpu.ip & 0xFF, cpu.ip >> 8));
+    // IP (EIP in 32-bit, but only lower 16 bits used)
+    result.push_str(&format_reg(cpu.ip));
 
-    // FLAGS
-    let flags = cpu.get_flags();
-    result.push_str(&format!("{:02x}{:02x}", flags & 0xFF, flags >> 8));
+    // FLAGS (EFLAGS in 32-bit)
+    result.push_str(&format_reg(cpu.get_flags()));
 
     // Segment registers (CS, SS, DS, ES)
-    // Note: GDB expects CS, SS, DS, ES order (not ES, CS, SS, DS)
-    result.push_str(&format!(
-        "{:02x}{:02x}",
-        cpu.segments[1] & 0xFF,
-        cpu.segments[1] >> 8
-    )); // CS
-    result.push_str(&format!(
-        "{:02x}{:02x}",
-        cpu.segments[2] & 0xFF,
-        cpu.segments[2] >> 8
-    )); // SS
-    result.push_str(&format!(
-        "{:02x}{:02x}",
-        cpu.segments[3] & 0xFF,
-        cpu.segments[3] >> 8
-    )); // DS
-    result.push_str(&format!(
-        "{:02x}{:02x}",
-        cpu.segments[0] & 0xFF,
-        cpu.segments[0] >> 8
-    )); // ES
+    result.push_str(&format_reg(cpu.segments[1])); // CS
+    result.push_str(&format_reg(cpu.segments[2])); // SS
+    result.push_str(&format_reg(cpu.segments[3])); // DS
+    result.push_str(&format_reg(cpu.segments[0])); // ES
 
-    // FS, GS (8086 doesn't have these, return 0)
-    result.push_str("0000");
-    result.push_str("0000");
+    // FS, GS (not on 8086)
+    result.push_str("00000000");
+    result.push_str("00000000");
 
     result
 }
@@ -180,57 +166,58 @@ fn read_all_registers(cpu: &mut Cpu) -> String {
 /// Write all registers from hex string
 fn write_all_registers(cpu: &mut Cpu, cmd: &str) -> String {
     // Command format: G<hex-data>
-    // Each register is 2 bytes (4 hex chars) in little-endian
+    // Each register is 32-bit (8 hex chars) in little-endian
     let data = &cmd[1..]; // Skip 'G'
 
-    if data.len() < 80 {
-        // Need at least 16 registers * 2 bytes * 2 hex/byte = 64 chars
+    if data.len() < 128 {
+        // Need at least 16 registers * 4 bytes * 2 hex/byte = 128 chars
         return "E01".to_string();
     }
 
     let mut pos = 0;
 
-    // Helper to parse 16-bit little-endian
-    let parse_u16 = |s: &str| -> Option<u16> {
-        let low = u8::from_str_radix(&s[0..2], 16).ok()?;
-        let high = u8::from_str_radix(&s[2..4], 16).ok()?;
-        Some((high as u16) << 8 | low as u16)
+    // Helper to parse 32-bit little-endian, return only lower 16 bits
+    let parse_u32_as_u16 = |s: &str| -> Option<u16> {
+        let byte0 = u8::from_str_radix(&s[0..2], 16).ok()?;
+        let byte1 = u8::from_str_radix(&s[2..4], 16).ok()?;
+        // Ignore upper 16 bits (bytes 2 and 3) for 8086
+        Some((byte1 as u16) << 8 | byte0 as u16)
     };
 
-    // General purpose registers
+    // General purpose registers (8 registers)
     for i in 0..8 {
-        if let Some(val) = parse_u16(&data[pos..pos + 4]) {
+        if let Some(val) = parse_u32_as_u16(&data[pos..pos + 8]) {
             cpu.regs[i] = val;
         }
-        pos += 4;
+        pos += 8;
     }
 
     // IP
-    if let Some(val) = parse_u16(&data[pos..pos + 4]) {
+    if let Some(val) = parse_u32_as_u16(&data[pos..pos + 8]) {
         cpu.ip = val;
     }
-    pos += 4;
+    pos += 8;
 
     // FLAGS (skip for now - lazy flag system makes this complex)
-    pos += 4;
+    pos += 8;
 
     // Segment registers (CS, SS, DS, ES)
-    if let Some(val) = parse_u16(&data[pos..pos + 4]) {
+    if let Some(val) = parse_u32_as_u16(&data[pos..pos + 8]) {
         cpu.segments[1] = val; // CS
     }
-    pos += 4;
+    pos += 8;
 
-    if let Some(val) = parse_u16(&data[pos..pos + 4]) {
+    if let Some(val) = parse_u32_as_u16(&data[pos..pos + 8]) {
         cpu.segments[2] = val; // SS
     }
-    pos += 4;
+    pos += 8;
 
-    if let Some(val) = parse_u16(&data[pos..pos + 4]) {
+    if let Some(val) = parse_u32_as_u16(&data[pos..pos + 8]) {
         cpu.segments[3] = val; // DS
     }
-    pos += 4;
+    pos += 8;
 
-    if let Some(val) = parse_u16(&data[pos..pos + 4]) {
+    if let Some(val) = parse_u32_as_u16(&data[pos..pos + 8]) {
         cpu.segments[0] = val; // ES
     }
 
