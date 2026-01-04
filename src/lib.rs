@@ -4,5 +4,6 @@
 
 pub mod components;
 pub mod cpu;
+pub mod emulator;
 pub mod io;
 pub mod memory;
