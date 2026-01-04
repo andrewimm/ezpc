@@ -5,9 +5,18 @@
 //! - 0xA0000-0xBFFFF: Video memory (not implemented yet)
 //! - 0xC0000-0xFFFFF: ROM and BIOS
 
+use crate::components::dma::Dma;
 use crate::components::mda::Mda;
 use crate::components::pic::Pic;
 use crate::io::IoDevice;
+
+/// DMA I/O ports (hardwired for performance)
+const DMA_CTRL_BASE: u16 = 0x00;
+const DMA_CTRL_END: u16 = 0x0F;
+const DMA_PAGE_CH2: u16 = 0x81;
+const DMA_PAGE_CH3: u16 = 0x82;
+const DMA_PAGE_CH1: u16 = 0x83;
+const DMA_PAGE_CH0: u16 = 0x87;
 
 /// PIC I/O ports (hardwired for performance)
 const PIC_PORT_BASE: u16 = 0x20;
@@ -29,6 +38,10 @@ pub struct MemoryBus {
     /// ROM - BIOS and extension ROMs (64KB space)
     rom: [u8; 65536],
 
+    /// 8237 DMA Controller
+    /// Hardwired at ports 0x00-0x0F and 0x81-0x83, 0x87 for performance
+    dma: Dma,
+
     /// 8259 PIC (Programmable Interrupt Controller)
     /// Hardwired at ports 0x20-0x21 for performance
     pic: Pic,
@@ -47,6 +60,7 @@ impl MemoryBus {
         Self {
             ram: [0; 65536],
             rom: [0; 65536],
+            dma: Dma::new(),
             pic: Pic::new(0x08), // IRQ0-7 map to INT 0x08-0x0F
             mda: Mda::new(),
             io_devices: Vec::new(),
@@ -157,6 +171,19 @@ impl MemoryBus {
     /// Read a byte from an IO port
     #[inline(always)]
     pub fn io_read_u8(&mut self, port: u16) -> u8 {
+        // DMA is hardwired for performance (ports 0x00-0x0F and page registers)
+        if (port >= DMA_CTRL_BASE && port <= DMA_CTRL_END)
+            || port == DMA_PAGE_CH0
+            || port == DMA_PAGE_CH1
+            || port == DMA_PAGE_CH2
+            || port == DMA_PAGE_CH3
+        {
+            let value = self.dma.read_u8(port);
+            #[cfg(debug_assertions)]
+            println!("[IO] IN  port 0x{:04X} -> 0x{:02X}", port, value);
+            return value;
+        }
+
         // PIC is hardwired for performance
         if port >= PIC_PORT_BASE && port <= PIC_PORT_END {
             let value = self.pic.read_u8(port);
@@ -192,6 +219,17 @@ impl MemoryBus {
     pub fn io_write_u8(&mut self, port: u16, value: u8) {
         #[cfg(debug_assertions)]
         println!("[IO] OUT port 0x{:04X} <- 0x{:02X}", port, value);
+
+        // DMA is hardwired for performance (ports 0x00-0x0F and page registers)
+        if (port >= DMA_CTRL_BASE && port <= DMA_CTRL_END)
+            || port == DMA_PAGE_CH0
+            || port == DMA_PAGE_CH1
+            || port == DMA_PAGE_CH2
+            || port == DMA_PAGE_CH3
+        {
+            self.dma.write_u8(port, value);
+            return;
+        }
 
         // PIC is hardwired for performance
         if port >= PIC_PORT_BASE && port <= PIC_PORT_END {
