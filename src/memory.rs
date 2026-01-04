@@ -5,7 +5,12 @@
 //! - 0xA0000-0xBFFFF: Video memory (not implemented yet)
 //! - 0xC0000-0xFFFFF: ROM and BIOS
 
+use crate::components::pic::Pic;
 use crate::io::IoDevice;
+
+/// PIC I/O ports (hardwired for performance)
+const PIC_PORT_BASE: u16 = 0x20;
+const PIC_PORT_END: u16 = 0x21;
 
 /// Memory bus for the IBM PC
 pub struct MemoryBus {
@@ -14,6 +19,10 @@ pub struct MemoryBus {
 
     /// ROM - BIOS and extension ROMs (64KB space)
     rom: [u8; 65536],
+
+    /// 8259 PIC (Programmable Interrupt Controller)
+    /// Hardwired at ports 0x20-0x21 for performance
+    pic: Pic,
 
     /// Registered IO devices for IN/OUT instructions
     io_devices: Vec<Box<dyn IoDevice>>,
@@ -25,6 +34,7 @@ impl MemoryBus {
         Self {
             ram: [0; 65536],
             rom: [0; 65536],
+            pic: Pic::new(0x08), // IRQ0-7 map to INT 0x08-0x0F
             io_devices: Vec::new(),
         }
     }
@@ -82,9 +92,25 @@ impl MemoryBus {
         self.io_devices.push(device);
     }
 
+    /// Get a reference to the PIC (Programmable Interrupt Controller)
+    pub fn pic(&self) -> &Pic {
+        &self.pic
+    }
+
+    /// Get a mutable reference to the PIC (Programmable Interrupt Controller)
+    pub fn pic_mut(&mut self) -> &mut Pic {
+        &mut self.pic
+    }
+
     /// Read a byte from an IO port
     #[inline(always)]
     pub fn io_read_u8(&mut self, port: u16) -> u8 {
+        // PIC is hardwired for performance
+        if port >= PIC_PORT_BASE && port <= PIC_PORT_END {
+            return self.pic.read_u8(port);
+        }
+
+        // Check other IO devices
         for device in &mut self.io_devices {
             if device.port_range().contains(&port) {
                 return device.read_u8(port);
@@ -96,6 +122,13 @@ impl MemoryBus {
     /// Write a byte to an IO port
     #[inline(always)]
     pub fn io_write_u8(&mut self, port: u16, value: u8) {
+        // PIC is hardwired for performance
+        if port >= PIC_PORT_BASE && port <= PIC_PORT_END {
+            self.pic.write_u8(port, value);
+            return;
+        }
+
+        // Check other IO devices
         for device in &mut self.io_devices {
             if device.port_range().contains(&port) {
                 device.write_u8(port, value);
