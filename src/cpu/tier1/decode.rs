@@ -717,9 +717,9 @@ impl Cpu {
         let mod_bits = (modrm >> 6) & 0x03;
         let rm = modrm & 0x07;
 
-        match mod_bits {
+        let (mut op, extra_len) = match mod_bits {
             0b11 => {
-                // Register mode
+                // Register mode - no segment override needed
                 let op = if is_byte {
                     Operand::reg8(rm)
                 } else {
@@ -770,6 +770,13 @@ impl Cpu {
                 (op, 2)
             }
             _ => unreachable!(),
+        };
+
+        // Apply segment override if present (only for memory operands)
+        if let Some(seg) = self.segment_override {
+            op.segment = seg;
         }
+
+        (op, extra_len)
     }
 }

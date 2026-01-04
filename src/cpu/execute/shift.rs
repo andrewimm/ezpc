@@ -18,8 +18,7 @@ pub fn rol(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction, count
     }
 
     let value = cpu.read_operand(mem, &instr.dst);
-    let is_byte =
-        instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
+    let is_byte = instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
 
     let (result, new_cf) = if is_byte {
         let val = value as u8;
@@ -67,8 +66,7 @@ pub fn ror(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction, count
     }
 
     let value = cpu.read_operand(mem, &instr.dst);
-    let is_byte =
-        instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
+    let is_byte = instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
 
     let (result, new_cf) = if is_byte {
         let val = value as u8;
@@ -118,8 +116,7 @@ pub fn rcl(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction, count
     }
 
     let value = cpu.read_operand(mem, &instr.dst);
-    let is_byte =
-        instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
+    let is_byte = instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
 
     let mut cf = cpu.get_flag(Cpu::CF);
     let mut result = value;
@@ -163,8 +160,7 @@ pub fn rcr(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction, count
     }
 
     let value = cpu.read_operand(mem, &instr.dst);
-    let is_byte =
-        instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
+    let is_byte = instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
 
     let mut cf = cpu.get_flag(Cpu::CF);
     let mut result = value;
@@ -218,8 +214,7 @@ pub fn shl(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction, count
     }
 
     let value = cpu.read_operand(mem, &instr.dst);
-    let is_byte =
-        instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
+    let is_byte = instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
 
     let (result, new_cf) = if is_byte {
         let val = value as u8;
@@ -297,8 +292,7 @@ pub fn shr(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction, count
     }
 
     let value = cpu.read_operand(mem, &instr.dst);
-    let is_byte =
-        instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
+    let is_byte = instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
 
     let original_msb = if is_byte {
         (value & 0x80) != 0
@@ -365,8 +359,7 @@ pub fn sar(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction, count
     }
 
     let value = cpu.read_operand(mem, &instr.dst);
-    let is_byte =
-        instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
+    let is_byte = instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
 
     let (result, new_cf) = if is_byte {
         let val = value as i8;

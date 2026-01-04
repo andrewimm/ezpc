@@ -374,3 +374,104 @@ fn test_hlt_interrupt_wakes() {
     // IP should be at interrupt handler (handler was entered)
     // After IRET from the interrupt handler, we'll be back at the instruction after HLT
 }
+
+#[test]
+fn test_mov_memory_basic() {
+    let mut harness = CpuHarness::new();
+
+    // Set DS=0x0100 (to keep physical addresses within 64KB RAM)
+    harness.cpu.segments[3] = 0x0100; // DS
+
+    // Set BX to point to offset 0x0050
+    harness.cpu.regs[3] = 0x0050; // BX
+
+    // Write test value to DS:BX (physical address = 0x0100 * 16 + 0x0050 = 0x1050)
+    let phys_addr = 0x1050;
+    harness.mem.write_u8(phys_addr, 0xAA);
+
+    // Verify write
+    assert_eq!(
+        harness.mem.read_u8(phys_addr),
+        0xAA,
+        "Memory write/read failed"
+    );
+
+    // Test: MOV AL, [BX]
+    harness.load_program(&[0x8A, 0x07], 0); // MOV AL, [BX] (ModR/M = 0x07)
+    harness.step();
+
+    assert_eq!(
+        harness.cpu.read_reg8(0),
+        0xAA,
+        "MOV AL, [BX] should read from DS:BX"
+    );
+}
+
+#[test]
+fn test_segment_override_mov() {
+    let mut harness = CpuHarness::new();
+
+    // Set up segments within 64KB address space
+    // ES=0x0100 -> physical base 0x01000
+    // DS=0x0200 -> physical base 0x02000
+    harness.cpu.segments[0] = 0x0100; // ES
+    harness.cpu.segments[3] = 0x0200; // DS
+
+    // Set BX to point to offset 0x0050
+    harness.cpu.regs[3] = 0x0050; // BX
+
+    // Write test value to ES:0x0050 (physical address 0x01000 + 0x0050 = 0x01050)
+    harness.mem.write_u8(0x01050, 0xAA);
+
+    // Write different value to DS:0x0050 (physical address 0x02000 + 0x0050 = 0x02050)
+    harness.mem.write_u8(0x02050, 0x55);
+
+    // Test 1: MOV AL, [BX] without override (should use DS)
+    harness.load_program(&[0x8A, 0x07], 0); // MOV AL, [BX]
+    harness.step();
+    assert_eq!(
+        harness.cpu.read_reg8(0),
+        0x55,
+        "MOV without override should use DS"
+    );
+
+    // Test 2: ES: MOV AL, [BX] (should use ES)
+    harness.load_program(&[0x26, 0x8A, 0x07], 0); // ES: MOV AL, [BX]
+    harness.step();
+    assert_eq!(
+        harness.cpu.read_reg8(0),
+        0xAA,
+        "MOV with ES: override should use ES"
+    );
+}
+
+#[test]
+fn test_segment_override_mov_immediate() {
+    let mut harness = CpuHarness::new();
+
+    // Set up segments within 64KB address space
+    // ES=0x0100 -> physical base 0x01000
+    // DS=0x0200 -> physical base 0x02000
+    harness.cpu.segments[0] = 0x0100; // ES
+    harness.cpu.segments[3] = 0x0200; // DS
+
+    // Set BX to point to offset 0x0050
+    harness.cpu.regs[3] = 0x0050; // BX
+
+    // Test: ES: MOV byte [BX], 0xA0
+    harness.load_program(&[0x26, 0xC6, 0x07, 0xA0], 0); // ES: MOV [BX], 0xA0
+    harness.step();
+
+    // Value should be written to ES:0x0050 (physical address 0x01000 + 0x0050 = 0x01050)
+    // Value should NOT be written to DS:0x0050 (physical address 0x02000 + 0x0050 = 0x02050)
+    assert_eq!(
+        harness.mem.read_u8(0x01050),
+        0xA0,
+        "Value should be written to ES:BX"
+    );
+    assert_eq!(
+        harness.mem.read_u8(0x02050),
+        0x00,
+        "Value should NOT be written to DS:BX"
+    );
+}
