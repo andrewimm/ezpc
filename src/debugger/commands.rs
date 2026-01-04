@@ -259,33 +259,48 @@ fn write_memory(mem: &mut MemoryBus, cmd: &str) -> String {
     // Parse command: M<addr>,<len>:<hex-bytes>
     let parts: Vec<&str> = cmd[1..].split(&[',' as char, ':' as char][..]).collect();
     if parts.len() != 3 {
+        eprintln!(
+            "GDB: Memory write parse error - expected 3 parts, got {}",
+            parts.len()
+        );
         return "E01".to_string();
     }
 
     let addr = match u32::from_str_radix(parts[0], 16) {
         Ok(a) => a,
-        Err(_) => return "E01".to_string(),
+        Err(_) => {
+            eprintln!("GDB: Memory write - invalid address: {}", parts[0]);
+            return "E01".to_string();
+        }
     };
 
     let len = match usize::from_str_radix(parts[1], 16) {
         Ok(l) => l,
-        Err(_) => return "E01".to_string(),
+        Err(_) => {
+            eprintln!("GDB: Memory write - invalid length: {}", parts[1]);
+            return "E01".to_string();
+        }
     };
 
     let data = parts[2];
+    eprintln!("GDB: Writing {} bytes to address 0x{:08x}", len, addr);
 
     // Write bytes to memory
     for i in 0..len {
         let hex_byte = &data[i * 2..i * 2 + 2];
         let byte = match u8::from_str_radix(hex_byte, 16) {
             Ok(b) => b,
-            Err(_) => return "E01".to_string(),
+            Err(_) => {
+                eprintln!("GDB: Memory write - invalid byte data at offset {}", i);
+                return "E01".to_string();
+            }
         };
 
         let byte_addr = addr + i as u32;
         mem.write_u8(byte_addr, byte);
     }
 
+    eprintln!("GDB: Memory write successful");
     "OK".to_string()
 }
 
@@ -334,6 +349,7 @@ fn insert_breakpoint(debugger: &mut GdbDebugger, cmd: &str) -> String {
         Err(_) => return "E01".to_string(),
     };
 
+    eprintln!("GDB: Setting breakpoint at linear address 0x{:08x}", addr);
     debugger.add_breakpoint(addr);
     "OK".to_string()
 }
