@@ -16,15 +16,17 @@ struct App {
     surface: Option<wgpu::Surface<'static>>,
     emulator: Option<EmulatorState>,
     rom_data: Option<Vec<u8>>,
+    gdb_socket_path: Option<String>,
 }
 
 impl App {
-    fn new(rom_data: Option<Vec<u8>>) -> Self {
+    fn new(rom_data: Option<Vec<u8>>, gdb_socket_path: Option<String>) -> Self {
         Self {
             window: None,
             surface: None,
             emulator: None,
             rom_data,
+            gdb_socket_path,
         }
     }
 }
@@ -95,8 +97,14 @@ impl ApplicationHandler for App {
 
         surface.configure(&device, &config);
 
-        // Create emulator state with ROM data
-        let emulator = EmulatorState::new(device, queue, surface_format, self.rom_data.take());
+        // Create emulator state with ROM data and optional GDB socket
+        let emulator = EmulatorState::new(
+            device,
+            queue,
+            surface_format,
+            self.rom_data.take(),
+            self.gdb_socket_path.as_deref(),
+        );
 
         // Store state
         self.window = Some(window);
@@ -179,16 +187,55 @@ fn main() {
     // Parse command-line arguments
     let args: Vec<String> = std::env::args().collect();
 
-    // Load ROM file if provided as the last argument
-    let rom_data = if args.len() > 1 {
-        let rom_path = &args[args.len() - 1];
-        match std::fs::read(rom_path) {
+    let mut gdb_socket_path: Option<String> = None;
+    let mut rom_path: Option<String> = None;
+
+    // Simple argument parser
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--gdb" => {
+                // Next argument is the socket path
+                if i + 1 < args.len() {
+                    gdb_socket_path = Some(args[i + 1].clone());
+                    i += 2;
+                } else {
+                    eprintln!("Error: --gdb requires a socket path argument");
+                    eprintln!("Usage: {} [--gdb <socket-path>] [<rom-file>]", args[0]);
+                    std::process::exit(1);
+                }
+            }
+            "--help" | "-h" => {
+                println!("EZPC - IBM PC Emulator");
+                println!();
+                println!("Usage: {} [OPTIONS] [ROM_FILE]", args[0]);
+                println!();
+                println!("Options:");
+                println!("  --gdb <socket-path>  Enable GDB remote debugging on Unix socket");
+                println!("  --help, -h           Show this help message");
+                println!();
+                println!("Examples:");
+                println!("  {} bios.rom", args[0]);
+                println!("  {} --gdb /tmp/ezpc.sock bios.rom", args[0]);
+                std::process::exit(0);
+            }
+            arg => {
+                // Assume it's the ROM file path
+                rom_path = Some(arg.to_string());
+                i += 1;
+            }
+        }
+    }
+
+    // Load ROM file if provided
+    let rom_data = if let Some(path) = rom_path {
+        match std::fs::read(&path) {
             Ok(data) => {
-                println!("Loaded ROM: {} ({} bytes)", rom_path, data.len());
+                println!("Loaded ROM: {} ({} bytes)", path, data.len());
                 Some(data)
             }
             Err(e) => {
-                eprintln!("Failed to load ROM file '{}': {}", rom_path, e);
+                eprintln!("Failed to load ROM file '{}': {}", path, e);
                 std::process::exit(1);
             }
         }
@@ -197,12 +244,18 @@ fn main() {
         None
     };
 
+    // Print GDB info if enabled
+    if let Some(ref socket) = gdb_socket_path {
+        println!("GDB remote debugging enabled on: {}", socket);
+        println!("Connect with: gdb -ex 'target remote {}'", socket);
+    }
+
     // Create event loop
     let event_loop = EventLoop::new().expect("Failed to create event loop");
     event_loop.set_control_flow(ControlFlow::Poll);
 
     // Create and run app
-    let mut app = App::new(rom_data);
+    let mut app = App::new(rom_data, gdb_socket_path);
     event_loop
         .run_app(&mut app)
         .expect("Failed to run event loop");
