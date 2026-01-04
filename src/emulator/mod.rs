@@ -4,6 +4,7 @@
 //! and rendering components.
 
 use crate::components::keyboard::Keyboard;
+use crate::components::pit::Pit;
 use crate::cpu::Cpu;
 use crate::memory::MemoryBus;
 use std::collections::VecDeque;
@@ -45,6 +46,10 @@ impl EmulatorState {
         let scancode_queue = Arc::new(RwLock::new(VecDeque::new()));
         let keyboard = Keyboard::new(scancode_queue.clone());
         memory.register_io_device(Box::new(keyboard));
+
+        // Create and register PIT
+        let pit = Pit::new();
+        memory.register_io_device(Box::new(pit));
 
         // Create and reset CPU to initialize reset vector (CS=0xF000, IP=0xFFF0)
         let mut cpu = Cpu::new();
