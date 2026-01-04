@@ -44,29 +44,29 @@ impl Mda {
             cycle_count: 0,
             // 60 Hz refresh at 4.77 MHz ~= 79,500 cycles per frame
             update_threshold: 79_500,
-            font_rom: Self::create_placeholder_font(),
+            font_rom: Self::load_font_rom(),
             dirty: false,
         }
     }
 
-    /// Create a placeholder font (all zeros for now)
-    /// TODO: Replace with actual IBM MDA font ROM
-    fn create_placeholder_font() -> [u8; 256 * 14] {
+    /// Load the IBM MDA character ROM font
+    ///
+    /// The ROM file is 8KB (256 characters × 32 bytes per character).
+    /// MDA uses only the first 14 scan lines, so we extract bytes 0-13
+    /// from each 32-byte character block.
+    fn load_font_rom() -> [u8; 256 * 14] {
+        // Include the actual MDA character ROM at compile time
+        const ROM_DATA: &[u8] = include_bytes!("../../roms/MDA_CHAR.bin");
+
         let mut font = [0u8; 256 * 14];
 
-        // For now, just create a simple pattern for ASCII printable characters
-        // This will be replaced with actual MDA font data later
-        for c in 32..127 {
-            let base = c * 14;
-            // Simple cross pattern for visibility
-            font[base + 0] = 0b00011000;
-            font[base + 1] = 0b00011000;
-            font[base + 2] = 0b00011000;
-            font[base + 3] = 0b11111111;
-            font[base + 4] = 0b11111111;
-            font[base + 5] = 0b00011000;
-            font[base + 6] = 0b00011000;
-            font[base + 7] = 0b00011000;
+        // Extract first 14 bytes of each 32-byte character
+        for char_idx in 0..256 {
+            let rom_offset = char_idx * 32; // 32 bytes per char in ROM
+            let font_offset = char_idx * 14; // 14 bytes per char in our array
+
+            font[font_offset..font_offset + 14]
+                .copy_from_slice(&ROM_DATA[rom_offset..rom_offset + 14]);
         }
 
         font
