@@ -325,3 +325,107 @@ impl IoDevice for Pit {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_pit_new() {
+        let pit = Pit::new();
+        assert_eq!(pit.counters[0].null_count, true);
+        assert_eq!(pit.cycle_accumulator, 0);
+        assert_eq!(pit.irq0_pending, false);
+    }
+
+    #[test]
+    fn test_pit_port_range() {
+        let pit = Pit::new();
+        let range = pit.port_range();
+        assert_eq!(*range.start(), 0x40);
+        assert_eq!(*range.end(), 0x43);
+    }
+
+    #[test]
+    fn test_control_word_mode2() {
+        let mut pit = Pit::new();
+        // Counter 0, low+high byte, mode 2, binary
+        pit.write_control(0b00110100); // 0x34
+
+        assert_eq!(pit.counters[0].access_mode, AccessMode::LowThenHigh);
+        assert_eq!(pit.counters[0].mode, CounterMode::Mode2);
+        assert_eq!(pit.counters[0].bcd, false);
+    }
+
+    #[test]
+    fn test_counter_write_low_high() {
+        let mut pit = Pit::new();
+        pit.write_control(0b00110100); // Counter 0, low+high, mode 2
+
+        // Write low byte (0x00)
+        pit.write_u8(PIT_COUNTER_0, 0x00);
+        assert_eq!(pit.counters[0].byte_toggle, true);
+
+        // Write high byte (0x10) -> reload value = 0x1000
+        pit.write_u8(PIT_COUNTER_0, 0x10);
+        assert_eq!(pit.counters[0].reload_value, 0x1000);
+        assert_eq!(pit.counters[0].count, 0x1000);
+        assert_eq!(pit.counters[0].null_count, false);
+    }
+
+    #[test]
+    fn test_counter_read_low_high() {
+        let mut pit = Pit::new();
+        pit.write_control(0b00110100);
+        pit.write_u8(PIT_COUNTER_0, 0x34);
+        pit.write_u8(PIT_COUNTER_0, 0x12);
+
+        // Latch count
+        pit.write_control(0b00000000); // Latch counter 0
+
+        // Read low then high
+        let low = pit.read_u8(PIT_COUNTER_0);
+        let high = pit.read_u8(PIT_COUNTER_0);
+
+        assert_eq!(low, 0x34);
+        assert_eq!(high, 0x12);
+    }
+
+    #[test]
+    fn test_counter_tick_and_reload() {
+        let mut pit = Pit::new();
+        pit.write_control(0b00110100);
+
+        // Set reload value to 4
+        pit.write_u8(PIT_COUNTER_0, 0x04);
+        pit.write_u8(PIT_COUNTER_0, 0x00);
+
+        assert_eq!(pit.counters[0].count, 4);
+
+        // Tick 4 times should wrap
+        assert!(!pit.counters[0].tick()); // 4 -> 3
+        assert!(!pit.counters[0].tick()); // 3 -> 2
+        assert!(!pit.counters[0].tick()); // 2 -> 1
+        assert!(pit.counters[0].tick()); // 1 -> 0 -> 4 (reload)
+
+        assert_eq!(pit.counters[0].count, 4);
+    }
+
+    #[test]
+    fn test_irq0_generation() {
+        let mut pit = Pit::new();
+        let mut pic = Pic::new(0x08);
+        pic.set_imr(0x00); // Unmask all
+
+        // Configure counter 0 for short interval
+        pit.write_control(0b00110100);
+        pit.write_u8(PIT_COUNTER_0, 0x04); // Reload = 4
+        pit.write_u8(PIT_COUNTER_0, 0x00);
+
+        // Tick with enough cycles to trigger (4 PIT ticks * 4 CPU cycles = 16)
+        pit.tick(16, &mut pic);
+
+        // Should have raised IRQ0
+        assert!(pic.intr_out());
+    }
+}
