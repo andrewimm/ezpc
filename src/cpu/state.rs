@@ -963,6 +963,9 @@ impl Cpu {
             return 4; // HLT consumes cycles while waiting
         }
 
+        // Reset instruction cycle counter at start of new instruction
+        self.current_instruction_cycles = 0;
+
         // Clear prefix state at start of instruction
         self.segment_override = None;
         self.repeat_prefix = RepeatPrefix::None;
@@ -993,6 +996,9 @@ impl Cpu {
 
         // After instruction execution, check for hardware interrupts
         self.check_interrupts(mem);
+
+        // Accumulate instruction cycles into total cycles
+        self.total_cycles += self.current_instruction_cycles as u64;
 
         // TODO: Return actual cycle count from instruction
         // For now, return placeholder value
