@@ -1,8 +1,8 @@
 //! Arithmetic instruction handlers (ADD, SUB, INC, DEC, etc.)
 
-use crate::cpu::Cpu;
 use crate::cpu::decode::{DecodedInstruction, OperandType};
 use crate::cpu::state::FlagOp;
+use crate::cpu::Cpu;
 use crate::memory::MemoryBus;
 
 /// ADD r/m, r - Add register to register/memory

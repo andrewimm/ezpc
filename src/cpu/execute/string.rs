@@ -5,9 +5,9 @@
 //!
 //! When combined with REP prefixes, these instructions repeat while CX != 0.
 
-use crate::cpu::Cpu;
 use crate::cpu::decode::DecodedInstruction;
 use crate::cpu::state::RepeatPrefix;
+use crate::cpu::Cpu;
 use crate::memory::MemoryBus;
 
 /// STOSB (0xAA) - Store AL to [ES:DI], then DI += 1 or DI -= 1

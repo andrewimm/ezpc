@@ -4,9 +4,9 @@
 //! This module provides methods for decoding instruction operands directly
 //! from memory without caching.
 
-use crate::cpu::Cpu;
 use crate::cpu::decode::instruction::DecodedInstruction;
 use crate::cpu::decode::operands::Operand;
+use crate::cpu::Cpu;
 use crate::memory::MemoryBus;
 
 impl Cpu {

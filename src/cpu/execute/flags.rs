@@ -5,8 +5,8 @@
 //! - CLI/STI: Clear/Set Interrupt Flag
 //! - CLD/STD: Clear/Set Direction Flag
 
-use crate::cpu::Cpu;
 use crate::cpu::decode::DecodedInstruction;
+use crate::cpu::Cpu;
 use crate::memory::MemoryBus;
 
 /// Handler for CLC (0xF8) - Clear Carry Flag

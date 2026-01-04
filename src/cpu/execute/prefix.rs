@@ -4,9 +4,9 @@
 //! - Segment override prefixes (ES:, CS:, SS:, DS:)
 //! - Repeat prefixes (REP, REPNE)
 
-use crate::cpu::Cpu;
 use crate::cpu::decode::DecodedInstruction;
 use crate::cpu::state::RepeatPrefix;
+use crate::cpu::Cpu;
 use crate::memory::MemoryBus;
 
 /// ES: segment override prefix (0x26)

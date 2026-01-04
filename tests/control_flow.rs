@@ -19,7 +19,7 @@ fn test_jmp_short() {
     );
 
     harness.step(); // JMP +5
-    // After JMP, IP = 2 (after reading JMP instruction) + 5 = 7
+                    // After JMP, IP = 2 (after reading JMP instruction) + 5 = 7
     assert_eq!(harness.cpu.ip, 7);
 
     harness.step(); // MOV AX, 0x1234
@@ -48,7 +48,7 @@ fn test_jz_taken() {
     assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF));
 
     harness.step(); // JZ +2 (should be taken)
-    // IP should be 7 + 2 = 9
+                    // IP should be 7 + 2 = 9
     assert_eq!(harness.cpu.ip, 9);
 
     harness.step(); // MOV AX, 0x1234
@@ -231,7 +231,7 @@ fn test_call_backward() {
     assert_eq!(harness.cpu.ip, 8);
 
     harness.step(); // CALL -8
-    // IP after CALL instruction read is 11, CALL -8 means IP = 11 + (-8) = 3
+                    // IP after CALL instruction read is 11, CALL -8 means IP = 11 + (-8) = 3
     assert_eq!(harness.cpu.ip, 3);
 
     // Return address 11 should be on stack
@@ -364,7 +364,7 @@ fn test_ret_far_imm() {
     // Should be back at CS=0, IP=8
     assert_eq!(harness.cpu.segments[1], 0); // CS restored
     assert_eq!(harness.cpu.ip, 8); // IP restored
-    // SP should be 0x1000 (0x0FFA + 4 for pops + 2 for cleanup)
+                                   // SP should be 0x1000 (0x0FFA + 4 for pops + 2 for cleanup)
     assert_eq!(harness.cpu.regs[4], 0x1000);
 
     harness.step(); // MOV AX, 0x1234

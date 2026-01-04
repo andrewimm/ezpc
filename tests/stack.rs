@@ -55,7 +55,7 @@ fn test_push_pop_es() {
 
     harness.step(); // PUSH ES
     assert_eq!(harness.cpu.regs[4], 0x0FFE); // SP should decrement by 2
-    // Verify ES was pushed to stack
+                                             // Verify ES was pushed to stack
     let pushed_value = harness.mem.read_u16(0x0FFE);
     assert_eq!(pushed_value, 0x5678);
 
@@ -86,7 +86,7 @@ fn test_push_cs() {
 
     harness.step(); // PUSH CS
     assert_eq!(harness.cpu.regs[4], 0x0FFE); // SP should decrement by 2
-    // Verify CS was pushed to stack (CS should be 0)
+                                             // Verify CS was pushed to stack (CS should be 0)
     let pushed_value = harness.mem.read_u16(0x0FFE);
     assert_eq!(pushed_value, 0x0000);
 }
@@ -153,7 +153,7 @@ fn test_push_pop_ds() {
 
     harness.step(); // PUSH DS
     assert_eq!(harness.cpu.regs[4], 0x0FFE); // SP should decrement by 2
-    // Verify DS was pushed to stack
+                                             // Verify DS was pushed to stack
     let pushed_value = harness.mem.read_u16(0x0FFE);
     assert_eq!(pushed_value, 0xDEF0);
 
@@ -184,7 +184,7 @@ fn test_push_all_segments() {
     // Set segment registers to known values (but keep CS and SS at 0 to avoid issues)
     harness.cpu.write_seg(0, 0x1111); // ES (safe to change, not used for fetching)
     harness.cpu.write_seg(3, 0x4444); // DS (safe to change, not used for fetching)
-    // CS and SS remain 0
+                                      // CS and SS remain 0
 
     harness.step(); // MOV SP, 0x1000
     assert_eq!(harness.cpu.regs[4], 0x1000);

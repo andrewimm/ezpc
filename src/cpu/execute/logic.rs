@@ -1,8 +1,8 @@
 //! Logical operation handlers (AND, OR, XOR, NOT, etc.)
 
-use crate::cpu::Cpu;
 use crate::cpu::decode::{DecodedInstruction, OperandType};
 use crate::cpu::state::FlagOp;
+use crate::cpu::Cpu;
 use crate::memory::MemoryBus;
 
 /// AND r/m, r - Logical AND register with register/memory

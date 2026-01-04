@@ -1,7 +1,7 @@
 //! Data transfer instruction handlers (MOV, XCHG, etc.)
 
-use crate::cpu::Cpu;
 use crate::cpu::decode::DecodedInstruction;
+use crate::cpu::Cpu;
 use crate::memory::MemoryBus;
 
 /// MOV r/m, r - Move register to register/memory

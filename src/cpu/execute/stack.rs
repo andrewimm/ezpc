@@ -1,7 +1,7 @@
 //! Stack operation handlers (PUSH, POP, etc.)
 
-use crate::cpu::Cpu;
 use crate::cpu::decode::DecodedInstruction;
+use crate::cpu::Cpu;
 use crate::memory::MemoryBus;
 
 /// PUSH r16 - Push 16-bit register onto stack

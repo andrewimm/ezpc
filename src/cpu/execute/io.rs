@@ -1,7 +1,7 @@
 //! IO instruction handlers (IN/OUT)
 
-use crate::cpu::Cpu;
 use crate::cpu::decode::DecodedInstruction;
+use crate::cpu::Cpu;
 use crate::memory::MemoryBus;
 
 /// IN AL, imm8 - Read byte from immediate port to AL

@@ -279,7 +279,7 @@ fn test_lahf() {
     harness.cpu.set_flag(Cpu::AF, true); // Bit 4
     harness.cpu.set_flag(Cpu::PF, true); // Bit 2
     harness.cpu.set_flag(Cpu::CF, true); // Bit 0
-    // Bit 1 is always set
+                                         // Bit 1 is always set
 
     // Clear AH to verify LAHF works
     harness.cpu.write_reg8(4, 0x00); // AH

@@ -1,7 +1,7 @@
 //! Basic instruction handlers and handler utilities
 
-use crate::cpu::Cpu;
 use crate::cpu::decode::DecodedInstruction;
+use crate::cpu::Cpu;
 use crate::memory::MemoryBus;
 
 /// Handler for invalid/unimplemented opcodes
