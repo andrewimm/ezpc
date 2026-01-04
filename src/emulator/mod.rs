@@ -46,8 +46,12 @@ impl EmulatorState {
         let keyboard = Keyboard::new(scancode_queue.clone());
         memory.register_io_device(Box::new(keyboard));
 
+        // Create and reset CPU to initialize reset vector (CS=0xF000, IP=0xFFF0)
+        let mut cpu = Cpu::new();
+        cpu.reset();
+
         Self {
-            cpu: Cpu::new(),
+            cpu,
             memory,
             renderer: FramebufferRenderer::new(device, queue, surface_format),
             last_frame_time: Instant::now(),
