@@ -475,3 +475,141 @@ fn test_segment_override_mov_immediate() {
         "Value should NOT be written to DS:BX"
     );
 }
+
+#[test]
+fn test_segment_override_mov_reg_to_mem() {
+    let mut harness = CpuHarness::new();
+
+    // Set up segments within 64KB address space
+    // ES=0x0100 -> physical base 0x01000
+    // DS=0x0200 -> physical base 0x02000
+    harness.cpu.segments[0] = 0x0100; // ES
+    harness.cpu.segments[3] = 0x0200; // DS
+
+    // Set BX to point to offset 0x0050
+    harness.cpu.regs[3] = 0x0050; // BX
+
+    // Set AL to test value
+    harness.cpu.write_reg8(0, 0xCC); // AL = 0xCC
+
+    // Test: ES: MOV [BX], AL
+    harness.load_program(&[0x26, 0x88, 0x07], 0); // ES: MOV [BX], AL
+    harness.step();
+
+    // Value should be written to ES:0x0050 (physical 0x01050), not DS:0x0050
+    assert_eq!(
+        harness.mem.read_u8(0x01050),
+        0xCC,
+        "Value should be written to ES:BX"
+    );
+    assert_eq!(
+        harness.mem.read_u8(0x02050),
+        0x00,
+        "Value should NOT be written to DS:BX"
+    );
+}
+
+#[test]
+fn test_segment_override_with_displacement() {
+    let mut harness = CpuHarness::new();
+
+    // Set up segments
+    // ES=0x0100 -> physical base 0x01000
+    // DS=0x0200 -> physical base 0x02000
+    harness.cpu.segments[0] = 0x0100; // ES
+    harness.cpu.segments[3] = 0x0200; // DS
+
+    // Set BX to base offset
+    harness.cpu.regs[3] = 0x0100; // BX = 0x0100
+
+    // Write test values
+    // ES:BX+0x10 = ES:0x0110 -> physical 0x01110
+    harness.mem.write_u8(0x01110, 0xBB);
+    // DS:BX+0x10 = DS:0x0110 -> physical 0x02110
+    harness.mem.write_u8(0x02110, 0xDD);
+
+    // Test 1: MOV AL, [BX+0x10] without override (should use DS)
+    harness.load_program(&[0x8A, 0x47, 0x10], 0); // MOV AL, [BX+0x10] (disp8=0x10)
+    harness.step();
+    assert_eq!(
+        harness.cpu.read_reg8(0),
+        0xDD,
+        "Should read from DS:BX+disp"
+    );
+
+    // Test 2: ES: MOV AL, [BX+0x10] (should use ES)
+    harness.load_program(&[0x26, 0x8A, 0x47, 0x10], 0); // ES: MOV AL, [BX+0x10]
+    harness.step();
+    assert_eq!(
+        harness.cpu.read_reg8(0),
+        0xBB,
+        "Should read from ES:BX+disp"
+    );
+}
+
+#[test]
+fn test_segment_override_with_base_index() {
+    let mut harness = CpuHarness::new();
+
+    // Set up segments
+    // SS=0x0100 -> physical base 0x01000
+    // DS=0x0200 -> physical base 0x02000
+    harness.cpu.segments[2] = 0x0100; // SS
+    harness.cpu.segments[3] = 0x0200; // DS
+
+    // Set BP and SI
+    harness.cpu.regs[5] = 0x0100; // BP = 0x0100
+    harness.cpu.regs[6] = 0x0050; // SI = 0x0050
+
+    // Write test values
+    // SS:BP+SI = SS:0x0150 -> physical 0x01150 (BP defaults to SS)
+    harness.mem.write_u8(0x01150, 0xAA);
+    // DS:BP+SI = DS:0x0150 -> physical 0x02150
+    harness.mem.write_u8(0x02150, 0xBB);
+
+    // Test 1: MOV AL, [BP+SI] without override (should use SS by default)
+    harness.load_program(&[0x8A, 0x02], 0); // MOV AL, [BP+SI] (ModR/M=0x02)
+    harness.step();
+    assert_eq!(
+        harness.cpu.read_reg8(0),
+        0xAA,
+        "BP-based addressing should default to SS"
+    );
+
+    // Test 2: DS: MOV AL, [BP+SI] (should override to DS)
+    harness.load_program(&[0x3E, 0x8A, 0x02], 0); // DS: MOV AL, [BP+SI]
+    harness.step();
+    assert_eq!(
+        harness.cpu.read_reg8(0),
+        0xBB,
+        "DS: override should work with BP+SI"
+    );
+}
+
+#[test]
+fn test_segment_override_word_operations() {
+    let mut harness = CpuHarness::new();
+
+    // Set up segments
+    // ES=0x0100 -> physical base 0x01000
+    // DS=0x0200 -> physical base 0x02000
+    harness.cpu.segments[0] = 0x0100; // ES
+    harness.cpu.segments[3] = 0x0200; // DS
+
+    // Set BX
+    harness.cpu.regs[3] = 0x0050; // BX
+
+    // Write test values (little-endian)
+    // ES:BX -> physical 0x01050
+    harness.mem.write_u16(0x01050, 0x1234);
+    // DS:BX -> physical 0x02050
+    harness.mem.write_u16(0x02050, 0x5678);
+
+    // Test: ES: MOV AX, [BX] (16-bit read with segment override)
+    harness.load_program(&[0x26, 0x8B, 0x07], 0); // ES: MOV AX, [BX]
+    harness.step();
+    assert_eq!(
+        harness.cpu.regs[0], 0x1234,
+        "16-bit read should use ES override"
+    );
+}
