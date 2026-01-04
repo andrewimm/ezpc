@@ -139,16 +139,23 @@ impl GdbDebugger {
 
             eprintln!("GDB: Received command: {}", packet);
 
+            // Check if this is a deferred-response command (s, c)
+            let deferred = packet.starts_with('s') || packet.starts_with('c');
+
             // Handle command
             let response = commands::handle_command(&packet, cpu, mem, self);
 
-            // Send response if not empty
+            // Send response
             if !response.is_empty() {
                 eprintln!("GDB: Sending response: {}", response);
                 self.send_packet(&response);
-            } else {
+            } else if !deferred {
+                // Empty response for unsupported commands (but not for s/c)
                 eprintln!("GDB: Empty response (not supported)");
                 self.send_packet("");
+            } else {
+                // Deferred response (s/c) - will send S05 later
+                eprintln!("GDB: Deferred response (will send halt reason after execution)");
             }
         }
     }
