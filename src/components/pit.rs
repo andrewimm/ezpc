@@ -200,4 +200,56 @@ impl Pit {
             irq0_pending: false,
         }
     }
+
+    /// Parse and execute control word
+    fn write_control(&mut self, value: u8) {
+        let counter_select = (value >> 6) & 0x03;
+        let access_mode_bits = (value >> 4) & 0x03;
+        let mode_bits = (value >> 1) & 0x07;
+        let bcd = (value & 0x01) != 0;
+
+        // Read-back command (not implementing for minimal version)
+        if counter_select == 0b11 {
+            unimplemented!("PIT read-back command not supported");
+        }
+
+        // Check for BCD mode
+        if bcd {
+            panic!("PIT BCD mode not supported");
+        }
+
+        let counter = &mut self.counters[counter_select as usize];
+
+        // Handle latch count command
+        if access_mode_bits == 0b00 {
+            // Latch current count
+            if counter.latch.is_none() {
+                counter.latch = Some(counter.count);
+            }
+            return;
+        }
+
+        // Set access mode
+        counter.access_mode = match access_mode_bits {
+            0b01 => AccessMode::LowByteOnly,
+            0b10 => AccessMode::HighByteOnly,
+            0b11 => AccessMode::LowThenHigh,
+            _ => AccessMode::LowThenHigh, // Shouldn't happen
+        };
+
+        // Set mode
+        counter.mode = match mode_bits {
+            0b000 => CounterMode::Mode0,
+            0b001 => CounterMode::Mode1,
+            0b010 | 0b110 => CounterMode::Mode2,
+            0b011 | 0b111 => CounterMode::Mode3,
+            0b100 => CounterMode::Mode4,
+            0b101 => CounterMode::Mode5,
+            _ => CounterMode::Mode0,
+        };
+
+        counter.bcd = bcd;
+        counter.byte_toggle = false; // Reset toggle on new control word
+        counter.null_count = true; // Wait for count to be loaded
+    }
 }
