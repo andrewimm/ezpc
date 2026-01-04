@@ -16,4 +16,12 @@ pub trait IoDevice {
 
     /// Get the port range this device handles (inclusive)
     fn port_range(&self) -> RangeInclusive<u16>;
+
+    /// Update device state based on CPU cycles
+    ///
+    /// Called after each CPU instruction with the number of cycles consumed.
+    /// Default implementation does nothing - devices can override if needed.
+    fn tick(&mut self, _cycles: u16) {
+        // Default: do nothing
+    }
 }

@@ -944,7 +944,9 @@ impl Cpu {
     /// Prefix bytes (segment overrides, REP) are handled by setting state
     /// in their handlers. This function loops to consume all prefixes before
     /// executing the actual instruction.
-    pub fn step(&mut self, mem: &mut MemoryBus) {
+    ///
+    /// Returns the number of CPU cycles consumed (placeholder: always 4 for now).
+    pub fn step(&mut self, mem: &mut MemoryBus) -> u16 {
         use crate::cpu::tier1::DISPATCH_TABLE;
 
         // Clear prefix state at start of instruction
@@ -977,6 +979,10 @@ impl Cpu {
 
         // After instruction execution, check for hardware interrupts
         self.check_interrupts(mem);
+
+        // TODO: Return actual cycle count from instruction
+        // For now, return placeholder value
+        4
     }
 
     /// Check and handle hardware interrupts from the PIC
