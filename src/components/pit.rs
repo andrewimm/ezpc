@@ -253,3 +253,32 @@ impl Pit {
         counter.null_count = true; // Wait for count to be loaded
     }
 }
+
+impl IoDevice for Pit {
+    fn port_range(&self) -> RangeInclusive<u16> {
+        PIT_COUNTER_0..=PIT_CONTROL
+    }
+
+    fn read_u8(&mut self, port: u16) -> u8 {
+        match port {
+            PIT_COUNTER_0 => self.counters[0].read_count(),
+            PIT_COUNTER_1 => self.counters[1].read_count(),
+            PIT_COUNTER_2 => self.counters[2].read_count(),
+            PIT_CONTROL => {
+                // Control port is write-only, reading returns 0xFF
+                0xFF
+            }
+            _ => 0xFF,
+        }
+    }
+
+    fn write_u8(&mut self, port: u16, value: u8) {
+        match port {
+            PIT_COUNTER_0 => self.counters[0].write_count(value),
+            PIT_COUNTER_1 => self.counters[1].write_count(value),
+            PIT_COUNTER_2 => self.counters[2].write_count(value),
+            PIT_CONTROL => self.write_control(value),
+            _ => {}
+        }
+    }
+}
