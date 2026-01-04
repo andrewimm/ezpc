@@ -96,6 +96,88 @@ impl Counter {
             null_count: true,
         }
     }
+
+    /// Load a new count value (handles both byte modes)
+    fn write_count(&mut self, value: u8) {
+        match self.access_mode {
+            AccessMode::LowByteOnly => {
+                self.reload_value = (self.reload_value & 0xFF00) | (value as u16);
+                self.count = self.reload_value;
+                self.null_count = false;
+            }
+            AccessMode::HighByteOnly => {
+                self.reload_value = (self.reload_value & 0x00FF) | ((value as u16) << 8);
+                self.count = self.reload_value;
+                self.null_count = false;
+            }
+            AccessMode::LowThenHigh => {
+                if !self.byte_toggle {
+                    // Receiving low byte
+                    self.reload_value = (self.reload_value & 0xFF00) | (value as u16);
+                    self.byte_toggle = true;
+                } else {
+                    // Receiving high byte
+                    self.reload_value = (self.reload_value & 0x00FF) | ((value as u16) << 8);
+                    self.count = self.reload_value;
+                    self.byte_toggle = false;
+                    self.null_count = false;
+                }
+            }
+            AccessMode::LatchCount => {
+                // Latch command doesn't write
+            }
+        }
+    }
+
+    /// Read current count value (handles both byte modes and latching)
+    fn read_count(&mut self) -> u8 {
+        let count_to_read = self.latch.unwrap_or(self.count);
+
+        match self.access_mode {
+            AccessMode::LowByteOnly => {
+                self.latch = None; // Clear latch after read
+                (count_to_read & 0xFF) as u8
+            }
+            AccessMode::HighByteOnly => {
+                self.latch = None;
+                (count_to_read >> 8) as u8
+            }
+            AccessMode::LowThenHigh => {
+                if !self.byte_toggle {
+                    // Return low byte first
+                    self.byte_toggle = true;
+                    (count_to_read & 0xFF) as u8
+                } else {
+                    // Return high byte
+                    self.byte_toggle = false;
+                    self.latch = None; // Clear latch after reading both bytes
+                    (count_to_read >> 8) as u8
+                }
+            }
+            AccessMode::LatchCount => 0xFF, // Should not happen
+        }
+    }
+
+    /// Decrement counter (returns true if it wrapped to 0)
+    fn tick(&mut self) -> bool {
+        if self.null_count {
+            return false; // Counter not initialized
+        }
+
+        if self.count == 0 {
+            // Reload and signal wrap
+            self.count = self.reload_value;
+            return true;
+        } else {
+            self.count -= 1;
+            if self.count == 0 {
+                self.count = self.reload_value;
+                return true;
+            }
+        }
+
+        false
+    }
 }
 
 /// Programmable Interval Timer
