@@ -39,8 +39,14 @@ impl EmulatorState {
     pub fn update(&mut self) {
         let elapsed = self.last_frame_time.elapsed();
 
-        // TODO: Step CPU execution with cycle budget
-        // For now, just maintain frame timing
+        // Step CPU and update peripherals with cycle counts
+        // For now, execute a fixed number of instructions per frame
+        const INSTRUCTIONS_PER_FRAME: usize = 1000; // Placeholder
+
+        for _ in 0..INSTRUCTIONS_PER_FRAME {
+            let cycles = self.cpu.step(&mut self.memory);
+            self.memory.tick(cycles);
+        }
 
         // Sleep if we're under the frame budget
         if elapsed < self.target_frame_duration {
@@ -51,7 +57,14 @@ impl EmulatorState {
     }
 
     /// Render current frame to surface
-    pub fn render(&self, surface_texture: &wgpu::SurfaceTexture) {
+    pub fn render(&mut self, surface_texture: &wgpu::SurfaceTexture) {
+        // Get mutable access to framebuffer
+        let framebuffer = self.renderer.framebuffer_mut();
+
+        // Let MDA render its text mode to the framebuffer
+        self.memory.mda().render_to_framebuffer(framebuffer);
+
+        // Render framebuffer to surface
         self.renderer.render(surface_texture);
     }
 }
