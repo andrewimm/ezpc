@@ -6,6 +6,7 @@
 use crate::components::keyboard::Keyboard;
 use crate::components::pit::Pit;
 use crate::cpu::Cpu;
+use crate::debugger::GdbDebugger;
 use crate::memory::MemoryBus;
 use std::collections::VecDeque;
 use std::sync::{Arc, RwLock};
@@ -25,6 +26,8 @@ pub struct EmulatorState {
     target_frame_duration: Duration,
     /// Keyboard scancode queue (shared with windowing system)
     scancode_queue: Arc<RwLock<VecDeque<u8>>>,
+    /// Optional GDB debugger
+    debugger: Option<GdbDebugger>,
 }
 
 impl EmulatorState {
@@ -34,6 +37,7 @@ impl EmulatorState {
         queue: wgpu::Queue,
         surface_format: wgpu::TextureFormat,
         rom_data: Option<Vec<u8>>,
+        gdb_socket_path: Option<&str>,
     ) -> Self {
         let mut memory = MemoryBus::new();
 
@@ -55,6 +59,9 @@ impl EmulatorState {
         let mut cpu = Cpu::new();
         cpu.reset();
 
+        // Create debugger if socket path provided
+        let debugger = gdb_socket_path.map(|path| GdbDebugger::new(path));
+
         Self {
             cpu,
             memory,
@@ -62,6 +69,7 @@ impl EmulatorState {
             last_frame_time: Instant::now(),
             target_frame_duration: Duration::from_micros(16667), // 60 FPS (~16.67ms)
             scancode_queue,
+            debugger,
         }
     }
 
@@ -76,6 +84,21 @@ impl EmulatorState {
     pub fn update(&mut self) {
         let elapsed = self.last_frame_time.elapsed();
 
+        // Process GDB commands if debugger enabled
+        if let Some(ref mut debugger) = self.debugger {
+            debugger.process_commands(&mut self.cpu, &mut self.memory);
+
+            // If paused, don't execute instructions
+            if debugger.is_paused() {
+                // Still sleep to avoid busy loop
+                if elapsed < self.target_frame_duration {
+                    std::thread::sleep(self.target_frame_duration - elapsed);
+                }
+                self.last_frame_time = Instant::now();
+                return;
+            }
+        }
+
         // Step CPU and update peripherals with cycle counts
         // For now, execute a fixed number of instructions per frame
         const INSTRUCTIONS_PER_FRAME: usize = 20; // Placeholder
@@ -83,6 +106,21 @@ impl EmulatorState {
         for _ in 0..INSTRUCTIONS_PER_FRAME {
             let cycles = self.cpu.step(&mut self.memory);
             self.memory.tick(cycles);
+
+            // Check for breakpoints and single-step after each instruction
+            if let Some(ref mut debugger) = self.debugger {
+                if debugger.check_breakpoint(&self.cpu) {
+                    debugger.pause();
+                    debugger.send_halt_reason();
+                    break;
+                }
+
+                // Handle single-step mode
+                if debugger.is_single_stepping() {
+                    debugger.finish_single_step();
+                    break;
+                }
+            }
         }
 
         // Sleep if we're under the frame budget
