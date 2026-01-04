@@ -159,26 +159,40 @@ impl MemoryBus {
     pub fn io_read_u8(&mut self, port: u16) -> u8 {
         // PIC is hardwired for performance
         if port >= PIC_PORT_BASE && port <= PIC_PORT_END {
-            return self.pic.read_u8(port);
+            let value = self.pic.read_u8(port);
+            #[cfg(debug_assertions)]
+            println!("[IO] IN  port 0x{:04X} -> 0x{:02X}", port, value);
+            return value;
         }
 
         // MDA is hardwired for performance
         if port >= MDA_PORT_BASE && port <= MDA_PORT_END {
-            return self.mda.read_u8(port);
+            let value = self.mda.read_u8(port);
+            #[cfg(debug_assertions)]
+            println!("[IO] IN  port 0x{:04X} -> 0x{:02X}", port, value);
+            return value;
         }
 
         // Check other IO devices
         for device in &mut self.io_devices {
             if device.port_range().contains(&port) {
-                return device.read_u8(port);
+                let value = device.read_u8(port);
+                #[cfg(debug_assertions)]
+                println!("[IO] IN  port 0x{:04X} -> 0x{:02X}", port, value);
+                return value;
             }
         }
+        #[cfg(debug_assertions)]
+        println!("[IO] IN  port 0x{:04X} -> 0xFF (unmapped)", port);
         0xFF // Unmapped port returns 0xFF
     }
 
     /// Write a byte to an IO port
     #[inline(always)]
     pub fn io_write_u8(&mut self, port: u16, value: u8) {
+        #[cfg(debug_assertions)]
+        println!("[IO] OUT port 0x{:04X} <- 0x{:02X}", port, value);
+
         // PIC is hardwired for performance
         if port >= PIC_PORT_BASE && port <= PIC_PORT_END {
             self.pic.write_u8(port, value);

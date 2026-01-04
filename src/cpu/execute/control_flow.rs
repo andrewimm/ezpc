@@ -528,6 +528,16 @@ pub fn int_n(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
     // Get interrupt number from immediate operand
     let int_num = instr.src.value as u8;
 
+    #[cfg(debug_assertions)]
+    {
+        let cs = cpu.read_seg(1);
+        let ip = cpu.ip;
+        println!(
+            "[INT] Software interrupt 0x{:02X} at {:04X}:{:04X}",
+            int_num, cs, ip
+        );
+    }
+
     // Use common interrupt entry sequence
     enter_interrupt(cpu, mem, int_num);
 }
@@ -538,6 +548,16 @@ pub fn int_n(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
 /// This is a special 1-byte form of INT 3, commonly used for breakpoints
 /// Behavior is identical to INT 3 but encoded in a single byte
 pub fn int3(cpu: &mut Cpu, mem: &mut MemoryBus, _instr: &DecodedInstruction) {
+    #[cfg(debug_assertions)]
+    {
+        let cs = cpu.read_seg(1);
+        let ip = cpu.ip;
+        println!(
+            "[INT] Software interrupt 0x03 (INT3/Breakpoint) at {:04X}:{:04X}",
+            cs, ip
+        );
+    }
+
     // Use common interrupt entry sequence with vector 3
     enter_interrupt(cpu, mem, 3);
 }

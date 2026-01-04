@@ -1034,6 +1034,19 @@ impl Cpu {
         // Acknowledge interrupt and get vector number
         let vector = mem.pic_mut().inta();
 
+        #[cfg(debug_assertions)]
+        {
+            let cs = self.read_seg(1);
+            let ip = self.ip;
+            println!(
+                "[INT] Hardware interrupt 0x{:02X} (IRQ{}) at {:04X}:{:04X}",
+                vector,
+                vector.wrapping_sub(0x08),
+                cs,
+                ip
+            );
+        }
+
         // Use common interrupt entry sequence
         enter_interrupt(self, mem, vector);
     }
