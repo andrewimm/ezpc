@@ -23,3 +23,15 @@ pub fn invalid_opcode(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstru
 pub fn nop(_cpu: &mut Cpu, _mem: &mut MemoryBus, _instr: &DecodedInstruction) {
     // Do nothing
 }
+
+/// Handler for HLT (0xF4) - Halt
+///
+/// Halts the CPU until an interrupt occurs. When halted, the CPU stops
+/// executing instructions but continues to check for interrupts. An interrupt
+/// will clear the halt flag and resume execution.
+///
+/// Note: On real hardware, HLT can only be executed in privileged mode.
+/// This implementation doesn't enforce privilege levels yet.
+pub fn hlt(cpu: &mut Cpu, _mem: &mut MemoryBus, _instr: &DecodedInstruction) {
+    cpu.halted = true;
+}

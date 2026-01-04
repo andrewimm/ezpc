@@ -226,3 +226,75 @@ fn test_lea_pointer_arithmetic() {
     // LEA should calculate 0x1000+0x0006 = 0x1006
     assert_eq!(harness.cpu.regs[0], 0x1006); // AX
 }
+
+#[test]
+fn test_hlt() {
+    let mut harness = CpuHarness::new();
+    // HLT
+    harness.load_program(&[0xF4], 0);
+
+    // Initially, CPU is not halted
+    assert_eq!(harness.cpu.halted, false);
+
+    // Execute HLT
+    harness.step();
+
+    // CPU should now be halted
+    assert_eq!(harness.cpu.halted, true);
+    assert_eq!(harness.cpu.ip, 1); // IP should have advanced
+}
+
+#[test]
+fn test_hlt_stays_halted() {
+    let mut harness = CpuHarness::new();
+    // HLT; NOP
+    harness.load_program(&[0xF4, 0x90], 0);
+
+    // Execute HLT
+    harness.step();
+    assert_eq!(harness.cpu.halted, true);
+    assert_eq!(harness.cpu.ip, 1);
+
+    // Step again - should stay halted and not execute NOP
+    harness.step();
+    assert_eq!(harness.cpu.halted, true);
+    assert_eq!(harness.cpu.ip, 1); // IP should not have advanced to NOP
+}
+
+#[test]
+fn test_hlt_interrupt_wakes() {
+    let mut harness = CpuHarness::new();
+    // Set up interrupt vector for IRQ0 (INT 0x08) at address 0x0020
+    harness.mem.write_u16(0x08 * 4, 0x0100); // Offset: 0x0100
+    harness.mem.write_u16(0x08 * 4 + 2, 0x0000); // Segment: 0x0000
+
+    // Put an IRET at the interrupt handler (0x0000:0x0100)
+    harness.mem.write_u8(0x0100, 0xCF); // IRET
+
+    // Unmask IRQ0 in the PIC (clear bit 0 in IMR)
+    harness.mem.pic_mut().set_imr(0xFE); // All masked except IRQ0
+
+    // Load program: STI; HLT; NOP
+    harness.load_program(&[0xFB, 0xF4, 0x90], 0);
+
+    // Execute STI (enable interrupts)
+    harness.step();
+    assert_eq!(harness.cpu.halted, false);
+
+    // Execute HLT
+    harness.step();
+    assert_eq!(harness.cpu.halted, true);
+
+    // Trigger hardware interrupt from PIC (IRQ0)
+    // Use edge-triggered mode: set IRQ0 from low to high
+    harness.mem.pic_mut().set_irq_level(0, true);
+
+    // Step - interrupt should wake CPU from halt and execute handler
+    harness.step();
+
+    // CPU should no longer be halted (interrupt cleared the halt flag)
+    assert_eq!(harness.cpu.halted, false);
+
+    // IP should be at interrupt handler (handler was entered)
+    // After IRET from the interrupt handler, we'll be back at the instruction after HLT
+}

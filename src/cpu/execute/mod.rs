@@ -15,4 +15,4 @@ pub mod stack;
 pub mod string;
 
 // Re-export commonly used handlers
-pub use handlers::{invalid_opcode, nop};
+pub use handlers::{hlt, invalid_opcode, nop};

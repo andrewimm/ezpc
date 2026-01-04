@@ -72,6 +72,10 @@ pub struct Cpu {
     /// Delay interrupt recognition by one instruction (set by STI)
     /// The 8088 delays interrupt recognition after STI to allow STI;IRET sequences
     delay_interrupt: bool,
+
+    /// CPU is halted (set by HLT instruction, cleared by interrupt)
+    /// When halted, the CPU doesn't execute instructions but still checks for interrupts
+    pub halted: bool,
 }
 
 /// Repeat prefix type for string operations
@@ -128,6 +132,7 @@ impl Cpu {
             repeat_prefix: RepeatPrefix::None,
             repeat_ip: 0,
             delay_interrupt: false,
+            halted: false,
         }
     }
 
@@ -149,6 +154,7 @@ impl Cpu {
         self.segment_override = None;
         self.repeat_prefix = RepeatPrefix::None;
         self.repeat_ip = 0;
+        self.halted = false;
     }
 
     // === Register Access Methods ===
@@ -945,9 +951,17 @@ impl Cpu {
     /// in their handlers. This function loops to consume all prefixes before
     /// executing the actual instruction.
     ///
+    /// When halted, the CPU skips instruction execution but still checks for interrupts.
+    ///
     /// Returns the number of CPU cycles consumed (placeholder: always 4 for now).
     pub fn step(&mut self, mem: &mut MemoryBus) -> u16 {
         use crate::cpu::tier1::DISPATCH_TABLE;
+
+        // If CPU is halted, skip instruction execution but check for interrupts
+        if self.halted {
+            self.check_interrupts(mem);
+            return 4; // HLT consumes cycles while waiting
+        }
 
         // Clear prefix state at start of instruction
         self.segment_override = None;
@@ -991,6 +1005,8 @@ impl Cpu {
     /// and the PIC has a pending interrupt, this will acknowledge the interrupt
     /// and transfer control to the interrupt handler.
     ///
+    /// Interrupts also clear the halt flag, allowing the CPU to resume execution.
+    ///
     /// Note: After STI, interrupt recognition is delayed by one instruction
     fn check_interrupts(&mut self, mem: &mut MemoryBus) {
         use crate::cpu::execute::control_flow::enter_interrupt;
@@ -1011,6 +1027,9 @@ impl Cpu {
         if !mem.pic().intr_out() {
             return;
         }
+
+        // Clear halt flag - interrupt wakes CPU from halt
+        self.halted = false;
 
         // Acknowledge interrupt and get vector number
         let vector = mem.pic_mut().inta();

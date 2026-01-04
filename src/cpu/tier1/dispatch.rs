@@ -270,7 +270,7 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     invalid_opcode,         // 0xF1: INT1 (undocumented, not implemented)
     prefix::repne,          // 0xF2: REPNE/REPNZ prefix
     prefix::rep,            // 0xF3: REP/REPE/REPZ prefix
-    invalid_opcode,         // 0xF4: HLT (not implemented yet)
+    hlt,                    // 0xF4: HLT
     invalid_opcode,         // 0xF5: CMC (not implemented yet)
     invalid_opcode, // 0xF6: TEST/NOT/NEG/MUL/IMUL/DIV/IDIV r/m8 (group, not implemented yet)
     invalid_opcode, // 0xF7: TEST/NOT/NEG/MUL/IMUL/DIV/IDIV r/m16 (group, not implemented yet)
