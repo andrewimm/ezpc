@@ -11,6 +11,7 @@ pub mod handlers;
 pub mod io;
 pub mod logic;
 pub mod prefix;
+pub mod shift;
 pub mod stack;
 pub mod string;
 

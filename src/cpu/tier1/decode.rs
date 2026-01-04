@@ -623,6 +623,59 @@ impl Cpu {
                 instr = instr.with_length(1);
             }
 
+            // Group 0xD0: Shift/rotate r/m8, 1
+            0xD0 => {
+                let modrm = self.fetch_u8(mem);
+                let reg = (modrm >> 3) & 0x07; // Operation type
+                let (rm_operand, extra_len) = self.decode_rm_from_modrm_byte(mem, modrm, true);
+
+                // Store operation type in src.value for the group handler
+                let dst_with_op = rm_operand.with_disp(0); // Reset disp, we'll use value for operation
+                let mut dst_final = dst_with_op;
+                dst_final.disp = rm_operand.disp; // Restore displacement
+
+                instr = instr
+                    .with_dst(dst_final)
+                    .with_src(Operand::imm8(reg)) // Operation type goes in src
+                    .with_length(1 + 1 + extra_len);
+            }
+
+            // Group 0xD1: Shift/rotate r/m16, 1
+            0xD1 => {
+                let modrm = self.fetch_u8(mem);
+                let reg = (modrm >> 3) & 0x07; // Operation type
+                let (rm_operand, extra_len) = self.decode_rm_from_modrm_byte(mem, modrm, false);
+
+                instr = instr
+                    .with_dst(rm_operand)
+                    .with_src(Operand::imm8(reg)) // Operation type goes in src
+                    .with_length(1 + 1 + extra_len);
+            }
+
+            // Group 0xD2: Shift/rotate r/m8, CL
+            0xD2 => {
+                let modrm = self.fetch_u8(mem);
+                let reg = (modrm >> 3) & 0x07; // Operation type
+                let (rm_operand, extra_len) = self.decode_rm_from_modrm_byte(mem, modrm, true);
+
+                instr = instr
+                    .with_dst(rm_operand)
+                    .with_src(Operand::imm8(reg)) // Operation type goes in src
+                    .with_length(1 + 1 + extra_len);
+            }
+
+            // Group 0xD3: Shift/rotate r/m16, CL
+            0xD3 => {
+                let modrm = self.fetch_u8(mem);
+                let reg = (modrm >> 3) & 0x07; // Operation type
+                let (rm_operand, extra_len) = self.decode_rm_from_modrm_byte(mem, modrm, false);
+
+                instr = instr
+                    .with_dst(rm_operand)
+                    .with_src(Operand::imm8(reg)) // Operation type goes in src
+                    .with_length(1 + 1 + extra_len);
+            }
+
             // Default case for unimplemented/invalid opcodes
             _ => {
                 // No operands, length is just 1
