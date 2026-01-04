@@ -24,6 +24,18 @@ pub fn jmp_near(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction)
     cpu.ip = cpu.ip.wrapping_add(offset as u16);
 }
 
+/// JMP far - Far jump to absolute segment:offset
+/// Opcode: 0xEA
+///
+/// CS:IP = segment:offset (loaded from immediate operands)
+pub fn jmp_far(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    // src contains offset, dst contains segment
+    let new_ip = instr.src.value;
+    let new_cs = instr.dst.value;
+    cpu.write_seg(1, new_cs); // CS
+    cpu.ip = new_ip;
+}
+
 /// JZ/JE - Jump if zero/equal
 /// Opcode: 0x74
 ///

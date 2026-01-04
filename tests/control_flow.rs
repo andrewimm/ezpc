@@ -1389,3 +1389,29 @@ fn test_sti_no_delay_when_already_enabled() {
     assert_eq!(harness.cpu.ip, 2);
     assert_eq!(harness.cpu.read_seg(1), 0x0000);
 }
+
+#[test]
+fn test_jmp_far() {
+    let mut harness = CpuHarness::new();
+    // JMP far 0x0100:0x0200
+    harness.load_program(
+        &[
+            0xEA, 0x00, 0x02, 0x00, 0x01, // JMP far 0x0100:0x0200
+        ],
+        0,
+    );
+
+    // Place a NOP at the target address 0x0100:0x0200
+    // Physical address = (0x0100 << 4) + 0x0200 = 0x1000 + 0x0200 = 0x1200
+    harness.mem.write_u8(0x1200, 0x90); // NOP
+
+    harness.step(); // JMP far
+
+    // Check CS:IP changed to 0x0100:0x0200
+    assert_eq!(harness.cpu.segments[1], 0x0100); // CS
+    assert_eq!(harness.cpu.ip, 0x0200);
+
+    // Execute NOP to verify we're at the correct location
+    harness.step(); // NOP
+    assert_eq!(harness.cpu.ip, 0x0201);
+}

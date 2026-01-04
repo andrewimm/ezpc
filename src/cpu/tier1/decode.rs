@@ -449,6 +449,16 @@ impl Cpu {
                     .with_length(5);
             }
 
+            // JMP far (0xEA)
+            0xEA => {
+                let offset = self.fetch_u16(mem);
+                let segment = self.fetch_u16(mem);
+                instr = instr
+                    .with_src(Operand::imm16(offset))
+                    .with_dst(Operand::imm16(segment))
+                    .with_length(5);
+            }
+
             // RET near (0xC3) - no operands
             0xC3 => {
                 // No operands needed

@@ -259,7 +259,7 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     io::out_imm8_ax,         // 0xE7: OUT imm8, AX
     control_flow::call_near, // 0xE8: CALL near
     control_flow::jmp_near,  // 0xE9: JMP near
-    invalid_opcode,          // 0xEA: JMP far (not implemented yet)
+    control_flow::jmp_far,   // 0xEA: JMP far
     control_flow::jmp_short, // 0xEB: JMP short
     io::in_al_dx,            // 0xEC: IN AL, DX
     io::in_ax_dx,            // 0xED: IN AX, DX
