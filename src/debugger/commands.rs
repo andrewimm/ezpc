@@ -67,7 +67,7 @@ pub fn handle_command(
         'v' => String::new(), // Not supported
 
         // p command (read single register)
-        'p' => String::new(), // Not supported, use 'g' instead
+        'p' => read_single_register(cpu, cmd),
 
         // P command (write single register)
         'P' => String::new(), // Not supported, use 'G' instead
@@ -86,6 +86,44 @@ pub fn handle_command(
 /// Return halt reason (SIGTRAP = signal 5)
 fn halt_reason() -> String {
     "S05".to_string()
+}
+
+/// Read a single register: p<n>
+/// Register numbers:
+/// 0-7: AX, CX, DX, BX, SP, BP, SI, DI
+/// 8: IP
+/// 9: FLAGS
+/// 10-13: CS, SS, DS, ES
+/// 14-15: FS, GS (not on 8086)
+fn read_single_register(cpu: &mut Cpu, cmd: &str) -> String {
+    // Parse register number from p<n>
+    let reg_num = match usize::from_str_radix(&cmd[1..], 16) {
+        Ok(n) => n,
+        Err(_) => return "E01".to_string(),
+    };
+
+    let value = match reg_num {
+        // General purpose registers
+        0..=7 => cpu.regs[reg_num],
+        // IP
+        8 => cpu.ip,
+        // FLAGS
+        9 => cpu.get_flags(),
+        // CS
+        10 => cpu.segments[1],
+        // SS
+        11 => cpu.segments[2],
+        // DS
+        12 => cpu.segments[3],
+        // ES
+        13 => cpu.segments[0],
+        // FS, GS (not on 8086)
+        14 | 15 => 0,
+        _ => return "E01".to_string(),
+    };
+
+    // Return as little-endian hex
+    format!("{:02x}{:02x}", value & 0xFF, value >> 8)
 }
 
 /// Read all registers and return as hex string
