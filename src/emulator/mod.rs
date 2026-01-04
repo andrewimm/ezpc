@@ -3,8 +3,11 @@
 //! This module manages the overall emulator state, including CPU, memory,
 //! and rendering components.
 
+use crate::components::keyboard::Keyboard;
 use crate::cpu::Cpu;
 use crate::memory::MemoryBus;
+use std::collections::VecDeque;
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
 pub mod graphics;
@@ -17,6 +20,8 @@ pub struct EmulatorState {
     renderer: FramebufferRenderer,
     last_frame_time: Instant,
     target_frame_duration: Duration,
+    /// Keyboard scancode queue (shared with windowing system)
+    scancode_queue: Arc<RwLock<VecDeque<u8>>>,
 }
 
 impl EmulatorState {
@@ -34,13 +39,26 @@ impl EmulatorState {
             memory.load_rom(&rom);
         }
 
+        // Create keyboard queue and register keyboard controller
+        let scancode_queue = Arc::new(RwLock::new(VecDeque::new()));
+        let keyboard = Keyboard::new(scancode_queue.clone());
+        memory.register_io_device(Box::new(keyboard));
+
         Self {
             cpu: Cpu::new(),
             memory,
             renderer: FramebufferRenderer::new(device, queue, surface_format),
             last_frame_time: Instant::now(),
             target_frame_duration: Duration::from_micros(16667), // 60 FPS (~16.67ms)
+            scancode_queue,
         }
+    }
+
+    /// Get a reference to the keyboard scancode queue
+    ///
+    /// The windowing system can use this to push scancodes when keys are pressed.
+    pub fn scancode_queue(&self) -> Arc<RwLock<VecDeque<u8>>> {
+        self.scancode_queue.clone()
     }
 
     /// Update emulator state for one frame
