@@ -3,9 +3,10 @@
 //! Main entry point for the emulator application.
 
 use ezpc::emulator::EmulatorState;
+use ezpc::scancode::physical_key_to_scancode;
 use std::sync::Arc;
 use winit::application::ApplicationHandler;
-use winit::event::WindowEvent;
+use winit::event::{ElementState, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
@@ -117,6 +118,23 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => {
                 event_loop.exit();
+            }
+            WindowEvent::KeyboardInput {
+                event: key_event, ..
+            } => {
+                // Convert winit key to IBM PC scancode
+                if let Some(make_code) = physical_key_to_scancode(key_event.physical_key) {
+                    let scancode = match key_event.state {
+                        ElementState::Pressed => make_code,         // Make code
+                        ElementState::Released => make_code | 0x80, // Break code
+                    };
+
+                    // Push scancode to emulator queue
+                    if let Some(emulator) = &self.emulator {
+                        let queue = emulator.scancode_queue();
+                        queue.write().unwrap().push_back(scancode);
+                    }
+                }
             }
             WindowEvent::RedrawRequested => {
                 if let (Some(emulator), Some(surface), Some(window)) =
