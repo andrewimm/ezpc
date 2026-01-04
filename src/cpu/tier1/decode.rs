@@ -744,12 +744,13 @@ impl Cpu {
                 // Memory mode, no displacement (except rm=110)
                 if rm == 0b110 {
                     // Direct addressing [disp16]
-                    let disp = self.fetch_u16(mem);
-                    // Direct addressing: value field holds the direct address
+                    let addr = self.fetch_u16(mem);
+                    // Direct addressing: store address in disp field, use sentinel in value
+                    // We use 0xFF as sentinel (not 6) to avoid ambiguity with base_index values
                     let op = if is_byte {
-                        Operand::new(crate::cpu::decode::operands::OperandType::Mem8, disp)
+                        Operand::mem8_disp(0xFF, addr as i16)
                     } else {
-                        Operand::new(crate::cpu::decode::operands::OperandType::Mem16, disp)
+                        Operand::mem16_disp(0xFF, addr as i16)
                     };
                     (op, 2)
                 } else {

@@ -80,11 +80,11 @@ pub fn lea(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
     match instr.src.op_type {
         OperandType::Mem8 | OperandType::Mem16 => {
             // Check if this is direct addressing or indirect addressing
-            // Direct addressing: value field contains full 16-bit address (> 7)
-            // Indirect addressing: value field contains base_index (0-7)
-            let ea = if instr.src.value > 7 {
-                // Direct addressing [disp16]: value contains the address directly
-                instr.src.value
+            // Direct addressing: value == 0xFF (sentinel), address in disp field
+            // Indirect addressing: value 0-7 (base_index encoding)
+            let ea = if instr.src.value == 0xFF {
+                // Direct addressing [disp16]: address is in disp field
+                instr.src.disp as u16
             } else {
                 // Indirect addressing [BX+SI], etc.: calculate EA
                 let base_index = instr.src.value as u8;

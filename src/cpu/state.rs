@@ -791,22 +791,39 @@ impl Cpu {
             OperandType::SegReg => self.read_seg(operand.value as u8),
             OperandType::Imm8 | OperandType::Imm16 => operand.value,
             OperandType::Mem8 | OperandType::Mem16 => {
-                // For memory operands, value contains base_index encoding
-                // We need to calculate the effective address
-                let base_index = operand.value as u8;
-                let (seg_idx, offset) = self.calculate_ea_from_operand(operand, base_index);
-
-                // Use segment override if present, otherwise use default
-                let segment = if operand.segment != 0xFF {
-                    self.read_seg(operand.segment)
+                // For memory operands, check if this is direct addressing or indirect
+                // Direct addressing: value == 0xFF (sentinel), address in disp field
+                // Indirect addressing: value 0-7 (base_index encoding)
+                if operand.value == 0xFF {
+                    // Direct addressing [disp16]: address is in disp field
+                    let segment = if operand.segment != 0xFF {
+                        self.read_seg(operand.segment)
+                    } else {
+                        self.segments[3] // DS default for direct addressing
+                    };
+                    let addr = operand.disp as u16;
+                    if operand.op_type == OperandType::Mem8 {
+                        self.read_mem8(mem, segment, addr) as u16
+                    } else {
+                        self.read_mem16(mem, segment, addr)
+                    }
                 } else {
-                    self.segments[seg_idx as usize]
-                };
+                    // Indirect addressing: calculate EA from base_index
+                    let base_index = operand.value as u8;
+                    let (seg_idx, offset) = self.calculate_ea_from_operand(operand, base_index);
 
-                if operand.op_type == OperandType::Mem8 {
-                    self.read_mem8(mem, segment, offset) as u16
-                } else {
-                    self.read_mem16(mem, segment, offset)
+                    // Use segment override if present, otherwise use default from EA calculation
+                    let segment = if operand.segment != 0xFF {
+                        self.read_seg(operand.segment)
+                    } else {
+                        self.segments[seg_idx as usize]
+                    };
+
+                    if operand.op_type == OperandType::Mem8 {
+                        self.read_mem8(mem, segment, offset) as u16
+                    } else {
+                        self.read_mem16(mem, segment, offset)
+                    }
                 }
             }
             OperandType::Direct => {
@@ -839,21 +856,39 @@ impl Cpu {
             OperandType::Reg16 => self.write_reg16(operand.value as u8, value),
             OperandType::SegReg => self.write_seg(operand.value as u8, value),
             OperandType::Mem8 | OperandType::Mem16 => {
-                // For memory operands, value contains base_index encoding
-                let base_index = operand.value as u8;
-                let (seg_idx, offset) = self.calculate_ea_from_operand(operand, base_index);
-
-                // Use segment override if present, otherwise use default
-                let segment = if operand.segment != 0xFF {
-                    self.read_seg(operand.segment)
+                // For memory operands, check if this is direct addressing or indirect
+                // Direct addressing: value == 0xFF (sentinel), address in disp field
+                // Indirect addressing: value 0-7 (base_index encoding)
+                if operand.value == 0xFF {
+                    // Direct addressing [disp16]: address is in disp field
+                    let segment = if operand.segment != 0xFF {
+                        self.read_seg(operand.segment)
+                    } else {
+                        self.segments[3] // DS default for direct addressing
+                    };
+                    let addr = operand.disp as u16;
+                    if operand.op_type == OperandType::Mem8 {
+                        self.write_mem8(mem, segment, addr, value as u8);
+                    } else {
+                        self.write_mem16(mem, segment, addr, value);
+                    }
                 } else {
-                    self.segments[seg_idx as usize]
-                };
+                    // Indirect addressing: calculate EA from base_index
+                    let base_index = operand.value as u8;
+                    let (seg_idx, offset) = self.calculate_ea_from_operand(operand, base_index);
 
-                if operand.op_type == OperandType::Mem8 {
-                    self.write_mem8(mem, segment, offset, value as u8);
-                } else {
-                    self.write_mem16(mem, segment, offset, value);
+                    // Use segment override if present, otherwise use default from EA calculation
+                    let segment = if operand.segment != 0xFF {
+                        self.read_seg(operand.segment)
+                    } else {
+                        self.segments[seg_idx as usize]
+                    };
+
+                    if operand.op_type == OperandType::Mem8 {
+                        self.write_mem8(mem, segment, offset, value as u8);
+                    } else {
+                        self.write_mem16(mem, segment, offset, value);
+                    }
                 }
             }
             OperandType::Direct => {

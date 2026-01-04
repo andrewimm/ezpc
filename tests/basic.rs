@@ -89,6 +89,39 @@ fn test_mov_bp_specific() {
 }
 
 #[test]
+fn test_mov_r16_direct_address() {
+    let mut harness = CpuHarness::new();
+    // Set up memory at address 0x0472 with a test value
+    harness.mem.write_u16(0x0472, 0xABCD);
+
+    // MOV BP, [0x0472] - the actual problematic instruction: 0x8B 0x2E 0x72 0x04
+    harness.load_program(&[0x8B, 0x2E, 0x72, 0x04], 0);
+
+    harness.step();
+    assert_eq!(harness.cpu.regs[5], 0xABCD); // BP should contain value from [0x0472]
+    assert_eq!(harness.cpu.ip, 4);
+}
+
+#[test]
+fn test_mov_direct_address_all_regs() {
+    let mut harness = CpuHarness::new();
+    // Test direct addressing with different registers
+    harness.mem.write_u16(0x1000, 0x1111);
+    harness.mem.write_u16(0x2000, 0x2222);
+
+    // MOV AX, [0x1000] - 0x8B 0x06 0x00 0x10
+    harness.load_program(&[0x8B, 0x06, 0x00, 0x10], 0);
+    harness.step();
+    assert_eq!(harness.cpu.regs[0], 0x1111); // AX
+
+    // MOV CX, [0x2000] - 0x8B 0x0E 0x00 0x20
+    harness.load_program(&[0x8B, 0x0E, 0x00, 0x20], 0);
+    harness.cpu.ip = 0;
+    harness.step();
+    assert_eq!(harness.cpu.regs[1], 0x2222); // CX
+}
+
+#[test]
 fn test_mov_r8_imm() {
     let mut harness = CpuHarness::new();
     // MOV AL, 0x12; MOV AH, 0x34
