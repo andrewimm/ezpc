@@ -51,22 +51,28 @@ impl Mda {
 
     /// Load the IBM MDA character ROM font
     ///
-    /// The ROM file is 8KB (256 characters × 32 bytes per character).
-    /// MDA uses only the first 14 scan lines, so we extract bytes 0-13
-    /// from each 32-byte character block.
+    /// The ROM file is 8KB organized as scan-line-major:
+    /// - Bytes 0-255: Scan line 0 for all 256 characters
+    /// - Bytes 256-511: Scan line 1 for all 256 characters
+    /// - ... (32 scan lines total)
+    ///
+    /// MDA uses only the first 14 scan lines.
     fn load_font_rom() -> [u8; 256 * 14] {
         // Include the actual MDA character ROM at compile time
         const ROM_DATA: &[u8] = include_bytes!("../../roms/MDA_CHAR.bin");
 
         let mut font = [0u8; 256 * 14];
 
-        // Extract first 14 bytes of each 32-byte character
+        // Extract scan-line-major data and reorganize to character-major
         for char_idx in 0..256 {
-            let rom_offset = char_idx * 32; // 32 bytes per char in ROM
-            let font_offset = char_idx * 14; // 14 bytes per char in our array
+            for scan_line in 0..14 {
+                // ROM is organized: all chars' scanline 0, then all chars' scanline 1, etc.
+                let rom_offset = scan_line * 256 + char_idx;
+                // Our font is organized: char 0's all scanlines, char 1's all scanlines, etc.
+                let font_offset = char_idx * 14 + scan_line;
 
-            font[font_offset..font_offset + 14]
-                .copy_from_slice(&ROM_DATA[rom_offset..rom_offset + 14]);
+                font[font_offset] = ROM_DATA[rom_offset];
+            }
         }
 
         font
