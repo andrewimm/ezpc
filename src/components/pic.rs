@@ -3,6 +3,16 @@
 //! The IBM PC uses a single 8259 PIC in edge-triggered mode to manage
 //! hardware interrupts from peripherals.
 
+use crate::io::IoDevice;
+use std::ops::RangeInclusive;
+
+/// PIC I/O ports
+const PIC_COMMAND_PORT: u16 = 0x20;
+const PIC_DATA_PORT: u16 = 0x21;
+
+/// EOI (End of Interrupt) command
+const EOI_COMMAND: u8 = 0x20;
+
 /// Intel 8259 PIC state
 ///
 /// The 8259 manages 8 IRQ lines (IRQ0-IRQ7) and converts them into
@@ -150,6 +160,62 @@ impl Pic {
             // Clear the highest priority (lowest bit) in ISR
             let irq = self.isr.trailing_zeros() as u8;
             self.isr &= !(1 << irq);
+        }
+    }
+}
+
+impl IoDevice for Pic {
+    fn port_range(&self) -> RangeInclusive<u16> {
+        PIC_COMMAND_PORT..=PIC_DATA_PORT
+    }
+
+    fn read_u8(&mut self, port: u16) -> u8 {
+        match port {
+            PIC_COMMAND_PORT => {
+                // Reading from command port typically returns ISR or IRR
+                // For now, return IRR as a simple implementation
+                println!(
+                    "[PIC] Read from command port 0x{:04X} - returning IRR",
+                    port
+                );
+                self.irr
+            }
+            PIC_DATA_PORT => {
+                // Reading from data port returns IMR
+                self.imr
+            }
+            _ => {
+                println!("[PIC] Unhandled read from port 0x{:04X}", port);
+                0xFF
+            }
+        }
+    }
+
+    fn write_u8(&mut self, port: u16, value: u8) {
+        match port {
+            PIC_COMMAND_PORT => {
+                // Command port handles various operations
+                if value == EOI_COMMAND {
+                    // Non-specific EOI - clear highest priority ISR bit
+                    self.eoi();
+                } else {
+                    // Other commands need implementation
+                    println!(
+                        "[PIC] Unhandled command port write: 0x{:04X} = 0x{:02X}",
+                        port, value
+                    );
+                }
+            }
+            PIC_DATA_PORT => {
+                // Data port is used to set the IMR
+                self.imr = value;
+            }
+            _ => {
+                println!(
+                    "[PIC] Unhandled write to port 0x{:04X} = 0x{:02X}",
+                    port, value
+                );
+            }
         }
     }
 }
@@ -304,5 +370,79 @@ mod tests {
         let vector = pic.inta();
         // Should return spurious vector (offset + 7)
         assert_eq!(vector, 0x08 + 7);
+    }
+
+    // I/O Port tests
+    #[test]
+    fn test_io_port_range() {
+        let pic = Pic::new(0x08);
+        let range = pic.port_range();
+        assert_eq!(*range.start(), 0x20);
+        assert_eq!(*range.end(), 0x21);
+    }
+
+    #[test]
+    fn test_io_write_read_imr() {
+        let mut pic = Pic::new(0x08);
+
+        // Write to data port (IMR)
+        pic.write_u8(PIC_DATA_PORT, 0xAB);
+
+        // Read back from data port
+        let value = pic.read_u8(PIC_DATA_PORT);
+        assert_eq!(value, 0xAB);
+        assert_eq!(pic.get_imr(), 0xAB);
+    }
+
+    #[test]
+    fn test_io_eoi_command() {
+        let mut pic = Pic::new(0x08);
+        pic.set_imr(0x00);
+
+        // Trigger and acknowledge IRQ2
+        pic.set_irq_level(2, false);
+        pic.set_irq_level(2, true);
+        let _vector = pic.inta();
+
+        assert_eq!(pic.get_isr(), 0x04); // Bit 2 set
+
+        // Send EOI via I/O port
+        pic.write_u8(PIC_COMMAND_PORT, EOI_COMMAND);
+
+        // ISR should be cleared
+        assert_eq!(pic.get_isr(), 0);
+    }
+
+    #[test]
+    fn test_io_read_command_port_returns_irr() {
+        let mut pic = Pic::new(0x08);
+        pic.set_imr(0x00);
+
+        // Trigger IRQ0 and IRQ3
+        pic.set_irq_level(0, false);
+        pic.set_irq_level(0, true);
+        pic.set_irq_level(3, false);
+        pic.set_irq_level(3, true);
+
+        // Reading command port should return IRR
+        let value = pic.read_u8(PIC_COMMAND_PORT);
+        assert_eq!(value, 0x09); // Bits 0 and 3 set
+    }
+
+    #[test]
+    fn test_io_imr_affects_interrupts() {
+        let mut pic = Pic::new(0x08);
+
+        // Trigger IRQ1
+        pic.set_irq_level(1, false);
+        pic.set_irq_level(1, true);
+
+        // Mask IRQ1 via I/O port
+        pic.write_u8(PIC_DATA_PORT, 0xFF);
+        assert!(!pic.intr_out()); // Should be masked
+
+        // Unmask IRQ1
+        pic.write_u8(PIC_DATA_PORT, 0xFD); // All except bit 1
+        assert!(pic.intr_out()); // Should now signal interrupt
     }
 }
