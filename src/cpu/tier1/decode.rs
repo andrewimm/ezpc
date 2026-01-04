@@ -43,12 +43,36 @@ impl Cpu {
                 instr = instr.with_dst(dst).with_src(src).with_length(1 + len);
             }
 
+            // MOV r/m16, Sreg (0x8C)
+            0x8C => {
+                // Decode ModR/M byte where reg field is segment register
+                let modrm = self.fetch_u8(mem);
+                let sreg = (modrm >> 3) & 0x03; // Segment register (only bits 0-1 used)
+                let (rm_operand, extra_len) = self.decode_rm_from_modrm_byte(mem, modrm, false);
+                instr = instr
+                    .with_dst(rm_operand)
+                    .with_src(Operand::seg(sreg))
+                    .with_length(1 + 1 + extra_len);
+            }
+
             // LEA r16, m (0x8D)
             0x8D => {
                 // LEA is always 16-bit (destination is always a 16-bit register)
                 // The source must be a memory operand (not a register)
                 let (src, dst, len) = self.decode_modrm_operands(mem, false);
                 instr = instr.with_dst(dst).with_src(src).with_length(1 + len);
+            }
+
+            // MOV Sreg, r/m16 (0x8E)
+            0x8E => {
+                // Decode ModR/M byte where reg field is segment register
+                let modrm = self.fetch_u8(mem);
+                let sreg = (modrm >> 3) & 0x03; // Segment register (only bits 0-1 used)
+                let (rm_operand, extra_len) = self.decode_rm_from_modrm_byte(mem, modrm, false);
+                instr = instr
+                    .with_dst(Operand::seg(sreg))
+                    .with_src(rm_operand)
+                    .with_length(1 + 1 + extra_len);
             }
 
             // XCHG r/m, r (0x86, 0x87)

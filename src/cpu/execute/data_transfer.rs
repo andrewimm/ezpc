@@ -105,3 +105,30 @@ pub fn lea(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
         }
     }
 }
+
+/// MOV r/m16, Sreg - Move segment register to register/memory
+/// Opcode: 0x8C
+///
+/// Copies the value from a segment register to a 16-bit register or memory location.
+/// The segment register is specified in the reg field of the ModR/M byte.
+/// This instruction is useful for saving segment register values.
+/// No flags are affected.
+pub fn mov_rm_sreg(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    let seg_value = cpu.read_operand(mem, &instr.src);
+    cpu.write_operand(mem, &instr.dst, seg_value);
+}
+
+/// MOV Sreg, r/m16 - Move register/memory to segment register
+/// Opcode: 0x8E
+///
+/// Copies a 16-bit value from a register or memory location to a segment register.
+/// The segment register is specified in the reg field of the ModR/M byte.
+/// This instruction is used to set up segment registers.
+/// No flags are affected.
+///
+/// Note: On the 8088, loading CS via this instruction is not allowed.
+/// Some sources indicate the behavior is undefined if attempted.
+pub fn mov_sreg_rm(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    let src_value = cpu.read_operand(mem, &instr.src);
+    cpu.write_operand(mem, &instr.dst, src_value);
+}

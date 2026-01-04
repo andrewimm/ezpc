@@ -101,6 +101,82 @@ fn test_lea_bx_si() {
 }
 
 #[test]
+fn test_mov_sreg_to_reg() {
+    let mut harness = CpuHarness::new();
+    // Set DS to 0x1234, then MOV AX, DS
+    harness.cpu.segments[3] = 0x1234; // DS
+    harness.load_program(
+        &[
+            0x8C, 0xD8, // MOV AX, DS (ModR/M=D8: reg=DS(011), rm=AX(000), mod=11)
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AX, DS
+    assert_eq!(harness.cpu.regs[0], 0x1234); // AX should contain DS value
+    assert_eq!(harness.cpu.ip, 2);
+}
+
+#[test]
+fn test_mov_reg_to_sreg() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0x5678; MOV DS, AX
+    harness.load_program(
+        &[
+            0xB8, 0x78, 0x56, // MOV AX, 0x5678
+            0x8E, 0xD8, // MOV DS, AX (ModR/M=D8: reg=DS(011), rm=AX(000), mod=11)
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AX, 0x5678
+    assert_eq!(harness.cpu.regs[0], 0x5678); // AX
+
+    harness.step(); // MOV DS, AX
+    assert_eq!(harness.cpu.segments[3], 0x5678); // DS should contain AX value
+    assert_eq!(harness.cpu.ip, 5);
+}
+
+#[test]
+fn test_mov_sreg_es_to_reg() {
+    let mut harness = CpuHarness::new();
+    // Set ES to 0xABCD, then MOV BX, ES
+    harness.cpu.segments[0] = 0xABCD; // ES
+    harness.load_program(
+        &[
+            0x8C, 0xC3, // MOV BX, ES (ModR/M=C3: reg=ES(000), rm=BX(011), mod=11)
+        ],
+        0,
+    );
+
+    harness.step(); // MOV BX, ES
+    assert_eq!(harness.cpu.regs[3], 0xABCD); // BX should contain ES value
+}
+
+#[test]
+fn test_mov_sreg_ss_roundtrip() {
+    let mut harness = CpuHarness::new();
+    // MOV CX, 0x9999; MOV SS, CX; MOV DX, SS
+    harness.load_program(
+        &[
+            0xB9, 0x99, 0x99, // MOV CX, 0x9999
+            0x8E, 0xD1, // MOV SS, CX (ModR/M=D1: reg=SS(010), rm=CX(001), mod=11)
+            0x8C, 0xD2, // MOV DX, SS (ModR/M=D2: reg=SS(010), rm=DX(010), mod=11)
+        ],
+        0,
+    );
+
+    harness.step(); // MOV CX, 0x9999
+    assert_eq!(harness.cpu.regs[1], 0x9999); // CX
+
+    harness.step(); // MOV SS, CX
+    assert_eq!(harness.cpu.segments[2], 0x9999); // SS
+
+    harness.step(); // MOV DX, SS
+    assert_eq!(harness.cpu.regs[2], 0x9999); // DX should contain SS value
+}
+
+#[test]
 fn test_lea_bx_si_disp8() {
     let mut harness = CpuHarness::new();
     // Set BX=0x1000, SI=0x0200

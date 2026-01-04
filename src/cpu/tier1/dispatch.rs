@@ -147,22 +147,22 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     control_flow::jle, // 0x7E: JLE/JNG
     control_flow::jg,  // 0x7F: JG/JNLE
     // 0x80-0x8F: Arithmetic and MOV instructions with immediate/ModR/M
-    arithmetic::group_80,     // 0x80: Arithmetic r/m8, imm8 (group)
-    arithmetic::group_81,     // 0x81: Arithmetic r/m16, imm16 (group)
-    arithmetic::group_80,     // 0x82: Arithmetic r/m8, imm8 (alias of 0x80)
-    arithmetic::group_83,     // 0x83: Arithmetic r/m16, imm8 (sign-extended, group)
-    logic::test_rm_r,         // 0x84: TEST r/m8, r8
-    logic::test_rm_r,         // 0x85: TEST r/m16, r16
-    data_transfer::xchg_rm_r, // 0x86: XCHG r/m8, r8
-    data_transfer::xchg_rm_r, // 0x87: XCHG r/m16, r16
-    data_transfer::mov_rm_r,  // 0x88: MOV r/m8, r8
-    data_transfer::mov_rm_r,  // 0x89: MOV r/m16, r16
-    data_transfer::mov_r_rm,  // 0x8A: MOV r8, r/m8
-    data_transfer::mov_r_rm,  // 0x8B: MOV r16, r/m16
-    invalid_opcode,           // 0x8C: MOV r/m16, Sreg (not implemented yet)
-    data_transfer::lea,       // 0x8D: LEA r16, m - Load Effective Address
-    invalid_opcode,           // 0x8E: MOV Sreg, r/m16 (not implemented yet)
-    invalid_opcode,           // 0x8F: POP r/m16 (group, not implemented yet)
+    arithmetic::group_80,       // 0x80: Arithmetic r/m8, imm8 (group)
+    arithmetic::group_81,       // 0x81: Arithmetic r/m16, imm16 (group)
+    arithmetic::group_80,       // 0x82: Arithmetic r/m8, imm8 (alias of 0x80)
+    arithmetic::group_83,       // 0x83: Arithmetic r/m16, imm8 (sign-extended, group)
+    logic::test_rm_r,           // 0x84: TEST r/m8, r8
+    logic::test_rm_r,           // 0x85: TEST r/m16, r16
+    data_transfer::xchg_rm_r,   // 0x86: XCHG r/m8, r8
+    data_transfer::xchg_rm_r,   // 0x87: XCHG r/m16, r16
+    data_transfer::mov_rm_r,    // 0x88: MOV r/m8, r8
+    data_transfer::mov_rm_r,    // 0x89: MOV r/m16, r16
+    data_transfer::mov_r_rm,    // 0x8A: MOV r8, r/m8
+    data_transfer::mov_r_rm,    // 0x8B: MOV r16, r/m16
+    data_transfer::mov_rm_sreg, // 0x8C: MOV r/m16, Sreg
+    data_transfer::lea,         // 0x8D: LEA r16, m - Load Effective Address
+    data_transfer::mov_sreg_rm, // 0x8E: MOV Sreg, r/m16
+    invalid_opcode,             // 0x8F: POP r/m16 (group, not implemented yet)
     // 0x90-0x9F: XCHG, CBW, CWD, CALL, WAIT, PUSHF, POPF, SAHF, LAHF
     nop,                        // 0x90: NOP (XCHG AX, AX)
     data_transfer::xchg_ax_r16, // 0x91: XCHG AX, CX
