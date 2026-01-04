@@ -27,7 +27,8 @@ The emulator is in active development with the CPU core implementation underway.
 - ModR/M decoding with all addressing modes
 - Segment:offset memory addressing
 - REP prefix support with conditional termination
-- Comprehensive test suite (247 tests)
+- **GDB remote debugging** over Unix socket
+- Comprehensive test suite (320+ tests)
 
 ## Architecture
 
@@ -52,6 +53,75 @@ cargo test
 cargo build --release
 ```
 
+## GDB Remote Debugging
+
+The emulator includes built-in support for GDB remote debugging over a Unix socket. This allows you to inspect CPU state, set breakpoints, single-step through code, and examine memory while the emulator runs.
+
+### Basic Usage
+
+1. **Start the emulator with GDB enabled:**
+
+```bash
+cargo run --release -- --gdb /tmp/ezpc.sock bios.rom
+```
+
+2. **In another terminal, connect with GDB:**
+
+```bash
+gdb
+(gdb) set architecture i8086
+(gdb) target remote /tmp/ezpc.sock
+```
+
+### GDB Commands
+
+Once connected, you can use standard GDB commands:
+
+```gdb
+# View registers
+(gdb) info registers
+
+# Read memory (segmented addressing)
+(gdb) x/16xb 0xf000:0xfff0
+
+# Set a breakpoint at a specific address
+(gdb) break *0xf000:0xe000
+
+# Single-step instructions
+(gdb) stepi
+
+# Continue execution
+(gdb) continue
+
+# Read/write registers
+(gdb) print $eip
+(gdb) set $ax = 0x1234
+```
+
+### Supported GDB Features
+
+- ✅ Register read/write (AX, BX, CX, DX, SI, DI, SP, BP, IP, FLAGS, CS, SS, DS, ES)
+- ✅ Memory read/write (linear addressing)
+- ✅ Breakpoints (software breakpoints at any address)
+- ✅ Single-step execution (`stepi`)
+- ✅ Continue execution (`continue`)
+- ✅ Halt reason reporting (SIGTRAP on break/step)
+
+### Architecture Notes
+
+The GDB integration uses **non-blocking I/O** to avoid impacting emulation performance:
+- Socket I/O runs in a separate thread
+- Commands are queued and processed each frame
+- Emulation never blocks waiting for GDB
+- Zero performance overhead when debugger not connected
+
+### Help
+
+```bash
+# View all command-line options
+cargo run -- --help
+```
+
 ## Project Structure
 
 - `src/cpu/` - CPU emulation core
@@ -59,6 +129,13 @@ cargo build --release
   - `decode/` - Instruction decoding (ModR/M, operands)
   - `execute/` - Instruction handlers by category
   - `tier1/` - Direct dispatch implementation
+- `src/debugger/` - GDB remote debugging support
+  - `protocol.rs` - GDB Remote Serial Protocol packet handling
+  - `socket.rs` - Non-blocking Unix socket I/O thread
+  - `commands.rs` - GDB command handlers (g, m, s, c, Z, etc.)
+  - `mod.rs` - Debugger core and state management
+- `src/components/` - Hardware components (PIC, PIT, keyboard, MDA)
+- `src/emulator/` - Emulator state and coordination
 - `tests/` - Comprehensive test suite organized by instruction type
 
 ## Development Approach
