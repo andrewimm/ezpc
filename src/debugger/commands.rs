@@ -63,6 +63,21 @@ pub fn handle_command(
         // Remove breakpoint: z0,<addr>,<kind>
         'z' => remove_breakpoint(debugger, cmd),
 
+        // v-commands (vCont, vMustReplyEmpty, etc.)
+        'v' => String::new(), // Not supported
+
+        // p command (read single register)
+        'p' => String::new(), // Not supported, use 'g' instead
+
+        // P command (write single register)
+        'P' => String::new(), // Not supported, use 'G' instead
+
+        // D command (detach)
+        'D' => {
+            debugger.pause();
+            "OK".to_string()
+        }
+
         // Unsupported command - return empty string
         _ => String::new(),
     }

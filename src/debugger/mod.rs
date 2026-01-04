@@ -137,12 +137,18 @@ impl GdbDebugger {
 
             self.packets_processed += 1;
 
+            eprintln!("GDB: Received command: {}", packet);
+
             // Handle command
             let response = commands::handle_command(&packet, cpu, mem, self);
 
             // Send response if not empty
             if !response.is_empty() {
+                eprintln!("GDB: Sending response: {}", response);
                 self.send_packet(&response);
+            } else {
+                eprintln!("GDB: Empty response (not supported)");
+                self.send_packet("");
             }
         }
     }
