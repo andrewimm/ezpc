@@ -29,8 +29,18 @@ pub struct Mda {
 impl Mda {
     /// Create a new MDA with blank VRAM and embedded font
     pub fn new() -> Self {
+        let mut vram = [0; 4096];
+
+        // HACK: Write "HELLO" to first 5 character cells for testing
+        // TODO: Remove this once we verify MDA is working
+        let hello = b"HELLO";
+        for (i, &ch) in hello.iter().enumerate() {
+            vram[i * 2] = ch; // Character code
+            vram[i * 2 + 1] = 0x07; // Attribute: white on black
+        }
+
         Self {
-            vram: [0; 4096],
+            vram,
             cycle_count: 0,
             // 60 Hz refresh at 4.77 MHz ~= 79,500 cycles per frame
             update_threshold: 79_500,
