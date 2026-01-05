@@ -282,8 +282,15 @@ pub fn call_m16_16(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstructio
     // Calculate the effective address
     let (seg_idx, ea) = match instr.dst.op_type {
         OperandType::Mem16 => {
-            let base_index = instr.dst.value as u8;
-            cpu.calculate_ea_from_operand(&instr.dst, base_index)
+            // Check if this is direct addressing (value == 0xFF sentinel)
+            if instr.dst.value == 0xFF {
+                // Direct addressing [disp16]: use DS as default segment
+                (3, instr.dst.disp as u16)
+            } else {
+                // Indirect addressing: calculate EA from base_index
+                let base_index = instr.dst.value as u8;
+                cpu.calculate_ea_from_operand(&instr.dst, base_index)
+            }
         }
         _ => panic!("CALL m16:16 requires memory operand"),
     };
@@ -343,8 +350,15 @@ pub fn jmp_m16_16(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction
     // Calculate the effective address
     let (seg_idx, ea) = match instr.dst.op_type {
         OperandType::Mem16 => {
-            let base_index = instr.dst.value as u8;
-            cpu.calculate_ea_from_operand(&instr.dst, base_index)
+            // Check if this is direct addressing (value == 0xFF sentinel)
+            if instr.dst.value == 0xFF {
+                // Direct addressing [disp16]: use DS as default segment
+                (3, instr.dst.disp as u16)
+            } else {
+                // Indirect addressing: calculate EA from base_index
+                let base_index = instr.dst.value as u8;
+                cpu.calculate_ea_from_operand(&instr.dst, base_index)
+            }
         }
         _ => panic!("JMP m16:16 requires memory operand"),
     };
