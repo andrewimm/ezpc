@@ -239,3 +239,103 @@ pub fn xlat(cpu: &mut Cpu, mem: &mut MemoryBus, _instr: &DecodedInstruction) {
     // Store result in AL
     cpu.write_reg8(0, value); // AL
 }
+
+/// LES r16, m16:16 - Load ES with Pointer
+/// Opcode: 0xC4
+///
+/// Loads a far pointer (segment:offset pair) from memory.
+/// The lower 16 bits (offset) are loaded into the destination register.
+/// The upper 16 bits (segment) are loaded into ES.
+///
+/// This instruction is used to load a far pointer in a single operation,
+/// commonly when setting up pointers to data structures in different segments.
+/// No flags are affected.
+pub fn les(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    use crate::cpu::decode::OperandType;
+
+    // LES requires a memory operand as source
+    match instr.src.op_type {
+        OperandType::Mem16 => {
+            // Calculate the effective address where the far pointer is stored
+            let (seg_idx, ea) = if instr.src.value == 0xFF {
+                // Direct addressing [disp16]: address is in disp field
+                (3, instr.src.disp as u16) // DS is default for direct addressing
+            } else {
+                // Indirect addressing [BX+SI], etc.: calculate EA
+                let base_index = instr.src.value as u8;
+                cpu.calculate_ea_from_operand(&instr.src, base_index)
+            };
+
+            // Get the segment to use (respecting segment override or using default)
+            let segment = if instr.src.segment != 0xFF {
+                cpu.read_seg(instr.src.segment)
+            } else {
+                cpu.read_seg(seg_idx)
+            };
+
+            // Read the 32-bit far pointer from memory
+            // Lower 16 bits: offset (goes to destination register)
+            let offset = cpu.read_mem16(mem, segment, ea);
+            // Upper 16 bits: segment (goes to ES)
+            let seg_value = cpu.read_mem16(mem, segment, ea.wrapping_add(2));
+
+            // Write offset to destination register
+            cpu.write_operand(mem, &instr.dst, offset);
+            // Write segment to ES (segment register 0)
+            cpu.write_seg(0, seg_value);
+        }
+        _ => {
+            panic!("LES requires a memory operand");
+        }
+    }
+}
+
+/// LDS r16, m16:16 - Load DS with Pointer
+/// Opcode: 0xC5
+///
+/// Loads a far pointer (segment:offset pair) from memory.
+/// The lower 16 bits (offset) are loaded into the destination register.
+/// The upper 16 bits (segment) are loaded into DS.
+///
+/// This instruction is used to load a far pointer in a single operation,
+/// commonly when setting up pointers to data structures in different segments.
+/// No flags are affected.
+pub fn lds(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    use crate::cpu::decode::OperandType;
+
+    // LDS requires a memory operand as source
+    match instr.src.op_type {
+        OperandType::Mem16 => {
+            // Calculate the effective address where the far pointer is stored
+            let (seg_idx, ea) = if instr.src.value == 0xFF {
+                // Direct addressing [disp16]: address is in disp field
+                (3, instr.src.disp as u16) // DS is default for direct addressing
+            } else {
+                // Indirect addressing [BX+SI], etc.: calculate EA
+                let base_index = instr.src.value as u8;
+                cpu.calculate_ea_from_operand(&instr.src, base_index)
+            };
+
+            // Get the segment to use (respecting segment override or using default)
+            let segment = if instr.src.segment != 0xFF {
+                cpu.read_seg(instr.src.segment)
+            } else {
+                cpu.read_seg(seg_idx)
+            };
+
+            // Read the 32-bit far pointer from memory
+            // Lower 16 bits: offset (goes to destination register)
+            let offset = cpu.read_mem16(mem, segment, ea);
+            // Upper 16 bits: segment (goes to DS)
+            let seg_value = cpu.read_mem16(mem, segment, ea.wrapping_add(2));
+
+            // Write offset to destination register
+            cpu.write_operand(mem, &instr.dst, offset);
+            // Write segment to DS (segment register 3)
+            cpu.write_seg(3, seg_value);
+        }
+        _ => {
+            panic!("LDS requires a memory operand");
+        }
+    }
+}

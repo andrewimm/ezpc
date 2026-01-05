@@ -102,6 +102,14 @@ impl Cpu {
                 }
             }
 
+            // LES r16, m16:16 (0xC4) and LDS r16, m16:16 (0xC5)
+            0xC4 | 0xC5 => {
+                // LES/LDS are always 16-bit (destination is always a 16-bit register)
+                // The source must be a memory operand (32-bit far pointer)
+                let (src, dst, len) = self.decode_modrm_operands(mem, false);
+                instr = instr.with_dst(dst).with_src(src).with_length(1 + len);
+            }
+
             // MOV r/m, imm (0xC6, 0xC7)
             0xC6 | 0xC7 => {
                 let is_byte = opcode == 0xC6;

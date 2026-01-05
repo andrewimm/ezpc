@@ -1095,3 +1095,162 @@ fn test_xlat_with_segment_override() {
     // Verify: AL should contain value from ES:0x100+0x10
     assert_eq!(harness.cpu.read_reg8(0), 0x77);
 }
+
+#[test]
+fn test_les_direct_address() {
+    let mut harness = CpuHarness::new();
+
+    // Setup: Store a far pointer at DS:0x1000
+    // Offset: 0x5678, Segment: 0xABCD
+    let addr = 0x1000u32;
+    harness.mem.write_u16(addr, 0x5678); // Offset
+    harness.mem.write_u16(addr + 2, 0xABCD); // Segment
+
+    // LES DI, [0x1000]
+    // Opcode: 0xC4, ModR/M: 0x3E (DI=7, direct addressing mode=00 with r/m=110)
+    harness.load_program(&[0xC4, 0x3E, 0x00, 0x10], 0);
+
+    // Initial state
+    harness.cpu.segments[3] = 0; // DS = 0
+    harness.cpu.regs[7] = 0; // DI = 0
+    harness.cpu.segments[0] = 0; // ES = 0
+
+    // Execute LES DI, [0x1000]
+    harness.step();
+
+    // Verify: DI should contain offset (0x5678), ES should contain segment (0xABCD)
+    assert_eq!(harness.cpu.regs[7], 0x5678); // DI
+    assert_eq!(harness.cpu.segments[0], 0xABCD); // ES
+}
+
+#[test]
+fn test_lds_direct_address() {
+    let mut harness = CpuHarness::new();
+
+    // Setup: Store a far pointer at DS:0x2000
+    // Offset: 0x1234, Segment: 0x9876
+    let addr = 0x2000u32;
+    harness.mem.write_u16(addr, 0x1234); // Offset
+    harness.mem.write_u16(addr + 2, 0x9876); // Segment
+
+    // LDS SI, [0x2000]
+    // Opcode: 0xC5, ModR/M: 0x36 (SI=6, direct addressing mode=00 with r/m=110)
+    harness.load_program(&[0xC5, 0x36, 0x00, 0x20], 0);
+
+    // Initial state
+    harness.cpu.segments[3] = 0; // DS = 0
+    harness.cpu.regs[6] = 0; // SI = 0
+
+    // Execute LDS SI, [0x2000]
+    harness.step();
+
+    // Verify: SI should contain offset (0x1234), DS should contain segment (0x9876)
+    assert_eq!(harness.cpu.regs[6], 0x1234); // SI
+    assert_eq!(harness.cpu.segments[3], 0x9876); // DS
+}
+
+#[test]
+fn test_les_indirect_bx() {
+    let mut harness = CpuHarness::new();
+
+    // Setup: Store a far pointer at DS:0x0500
+    // Physical address calculation: DS=0x0100, BX=0x0400 -> (0x0100 << 4) + 0x0400 = 0x1400
+    // Store offset: 0x3344, segment: 0x5566
+    harness.cpu.segments[3] = 0x0100; // DS
+    harness.cpu.regs[3] = 0x0400; // BX
+
+    let physical_addr = 0x1400u32;
+    harness.mem.write_u16(physical_addr, 0x3344); // Offset
+    harness.mem.write_u16(physical_addr + 2, 0x5566); // Segment
+
+    // LES AX, [BX]
+    // Opcode: 0xC4, ModR/M: 0x07 (AX=0, [BX]=111)
+    harness.load_program(&[0xC4, 0x07], 0);
+
+    // Execute LES AX, [BX]
+    harness.step();
+
+    // Verify: AX should contain offset (0x3344), ES should contain segment (0x5566)
+    assert_eq!(harness.cpu.regs[0], 0x3344); // AX
+    assert_eq!(harness.cpu.segments[0], 0x5566); // ES
+}
+
+#[test]
+fn test_lds_indirect_bx_si() {
+    let mut harness = CpuHarness::new();
+
+    // Setup: Store a far pointer at DS:[BX+SI]
+    // DS=0x0200, BX=0x1000, SI=0x0050
+    // Physical address: (0x0200 << 4) + 0x1000 + 0x0050 = 0x3050
+    harness.cpu.segments[3] = 0x0200; // DS
+    harness.cpu.regs[3] = 0x1000; // BX
+    harness.cpu.regs[6] = 0x0050; // SI
+
+    let physical_addr = 0x3050u32;
+    harness.mem.write_u16(physical_addr, 0x7788); // Offset
+    harness.mem.write_u16(physical_addr + 2, 0x99AA); // Segment
+
+    // LDS DX, [BX+SI]
+    // Opcode: 0xC5, ModR/M: 0x10 (DX=2, [BX+SI]=000)
+    harness.load_program(&[0xC5, 0x10], 0);
+
+    // Execute LDS DX, [BX+SI]
+    harness.step();
+
+    // Verify: DX should contain offset (0x7788), DS should contain segment (0x99AA)
+    assert_eq!(harness.cpu.regs[2], 0x7788); // DX
+    assert_eq!(harness.cpu.segments[3], 0x99AA); // DS
+}
+
+#[test]
+fn test_les_with_displacement() {
+    let mut harness = CpuHarness::new();
+
+    // Setup: Store a far pointer at DS:[BX+0x10]
+    // DS=0x0000, BX=0x2000, disp=0x10
+    // Physical address: (0x0000 << 4) + 0x2000 + 0x10 = 0x2010
+    harness.cpu.segments[3] = 0x0000; // DS
+    harness.cpu.regs[3] = 0x2000; // BX
+
+    let physical_addr = 0x2010u32;
+    harness.mem.write_u16(physical_addr, 0xBBCC); // Offset
+    harness.mem.write_u16(physical_addr + 2, 0xDDEE); // Segment
+
+    // LES CX, [BX+0x10]
+    // Opcode: 0xC4, ModR/M: 0x4F (CX=1, [BX+disp8]=01 111), disp8=0x10
+    harness.load_program(&[0xC4, 0x4F, 0x10], 0);
+
+    // Execute LES CX, [BX+0x10]
+    harness.step();
+
+    // Verify: CX should contain offset (0xBBCC), ES should contain segment (0xDDEE)
+    assert_eq!(harness.cpu.regs[1], 0xBBCC); // CX
+    assert_eq!(harness.cpu.segments[0], 0xDDEE); // ES
+}
+
+#[test]
+fn test_lds_overwrite_existing_segment() {
+    let mut harness = CpuHarness::new();
+
+    // Setup: DS already has a value, verify it gets overwritten
+    harness.cpu.segments[3] = 0xFFFF; // DS initial value
+
+    // Store a far pointer at DS:0x0100
+    // Physical address: (0xFFFF << 4) + 0x0100 = 0x100090 (wraps in real mode)
+    // For simplicity, let's use DS=0x0000
+    harness.cpu.segments[3] = 0x0000; // DS
+    let addr = 0x0100u32;
+    harness.mem.write_u16(addr, 0x1111); // Offset
+    harness.mem.write_u16(addr + 2, 0x2222); // Segment
+
+    // LDS BX, [0x0100]
+    // Opcode: 0xC5, ModR/M: 0x1E (BX=3, direct addressing)
+    harness.load_program(&[0xC5, 0x1E, 0x00, 0x01], 0);
+
+    // Execute LDS BX, [0x0100]
+    harness.step();
+
+    // Verify: BX should contain offset (0x1111), DS should be overwritten with 0x2222
+    assert_eq!(harness.cpu.regs[3], 0x1111); // BX
+    assert_eq!(harness.cpu.segments[3], 0x2222); // DS overwritten
+}
