@@ -972,7 +972,20 @@ impl Cpu {
                 let ea = self.read_reg16(3).wrapping_add(disp);
                 (3, ea) // DS default
             }
-            _ => unreachable!(),
+            _ => {
+                panic!(
+                    "Invalid base_index encoding in calculate_ea_from_operand: 0x{:02X}\n\
+                     CS:IP = {:04X}:{:04X} (IP has advanced past instruction start)\n\
+                     Operand: type={:?}, value=0x{:04X}, disp=0x{:04X}, segment=0x{:02X}",
+                    base_index,
+                    self.segments[1],
+                    self.ip,
+                    operand.op_type,
+                    operand.value,
+                    operand.disp,
+                    operand.segment
+                )
+            }
         }
     }
 
