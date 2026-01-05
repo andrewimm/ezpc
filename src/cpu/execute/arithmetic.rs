@@ -907,7 +907,7 @@ pub fn group_f6(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) 
     let reg = (instr.dst.value >> 8) as u8; // High byte stores the reg field
 
     match reg {
-        0 | 1 => panic!("TEST r/m8, imm8 not implemented yet"),
+        0 | 1 => test_rm_imm(cpu, mem, instr), // TEST r/m8, imm8
         2 => panic!("NOT r/m8 not implemented yet"),
         3 => panic!("NEG r/m8 not implemented yet"),
         4 => mul(cpu, mem, instr), // MUL r/m8
@@ -924,7 +924,7 @@ pub fn group_f7(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) 
     let reg = (instr.dst.value >> 8) as u8; // High byte stores the reg field
 
     match reg {
-        0 | 1 => panic!("TEST r/m16, imm16 not implemented yet"),
+        0 | 1 => test_rm_imm(cpu, mem, instr), // TEST r/m16, imm16
         2 => panic!("NOT r/m16 not implemented yet"),
         3 => panic!("NEG r/m16 not implemented yet"),
         4 => mul(cpu, mem, instr), // MUL r/m16
@@ -932,5 +932,30 @@ pub fn group_f7(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) 
         6 => panic!("DIV r/m16 not implemented yet"),
         7 => panic!("IDIV r/m16 not implemented yet"),
         _ => unreachable!(),
+    }
+}
+
+/// TEST r/m, imm - Logical TEST immediate with register/memory
+/// Used by Group 0xF6 (reg=0,1) and Group 0xF7 (reg=0,1)
+///
+/// Performs bitwise AND of r/m with immediate value and sets flags, but does not store the result.
+///
+/// Flags affected: CF=0, OF=0, SF, ZF, PF (AF undefined)
+fn test_rm_imm(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    let dst_value = cpu.read_operand(mem, &instr.dst);
+    let imm_value = cpu.read_operand(mem, &instr.src);
+
+    let is_byte = instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
+
+    if is_byte {
+        let result = (dst_value as u8) & (imm_value as u8);
+        // TEST doesn't write back the result
+        cpu.clear_of_cf_af();
+        cpu.set_lazy_flags(result as u32, FlagOp::And8);
+    } else {
+        let result = dst_value & imm_value;
+        // TEST doesn't write back the result
+        cpu.clear_of_cf_af();
+        cpu.set_lazy_flags(result as u32, FlagOp::And16);
     }
 }

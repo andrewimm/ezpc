@@ -634,7 +634,16 @@ impl Cpu {
                 let mut dst_with_reg = rm_operand;
                 dst_with_reg.value = (dst_with_reg.value & 0xFF) | ((reg as u16) << 8);
 
-                instr = instr.with_dst(dst_with_reg).with_length(1 + 1 + extra_len);
+                // TEST r/m8, imm8 (reg=0 or reg=1) requires an immediate byte
+                if reg == 0 || reg == 1 {
+                    let imm = self.fetch_u8(mem);
+                    instr = instr
+                        .with_dst(dst_with_reg)
+                        .with_src(Operand::imm8(imm))
+                        .with_length(1 + 1 + extra_len + 1);
+                } else {
+                    instr = instr.with_dst(dst_with_reg).with_length(1 + 1 + extra_len);
+                }
             }
 
             // Group 0xF7: TEST/NOT/NEG/MUL/IMUL/DIV/IDIV r/m16
@@ -647,7 +656,16 @@ impl Cpu {
                 let mut dst_with_reg = rm_operand;
                 dst_with_reg.value = (dst_with_reg.value & 0xFF) | ((reg as u16) << 8);
 
-                instr = instr.with_dst(dst_with_reg).with_length(1 + 1 + extra_len);
+                // TEST r/m16, imm16 (reg=0 or reg=1) requires an immediate word
+                if reg == 0 || reg == 1 {
+                    let imm = self.fetch_u16(mem);
+                    instr = instr
+                        .with_dst(dst_with_reg)
+                        .with_src(Operand::imm16(imm))
+                        .with_length(1 + 1 + extra_len + 2);
+                } else {
+                    instr = instr.with_dst(dst_with_reg).with_length(1 + 1 + extra_len);
+                }
             }
 
             // Group 0xFE: INC/DEC r/m8
