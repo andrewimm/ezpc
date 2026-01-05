@@ -368,6 +368,24 @@ fn test_decode_rm_operand_memory() {
 }
 
 #[test]
+fn test_decode_rm_operand_direct_address() {
+    // Direct address mode [disp16]
+    let modrm = ModRM::decode(0b00_000_110).with_direct_addr(0x1234);
+
+    // Test 8-bit operand
+    let op = Cpu::decode_rm_operand(&modrm, true);
+    assert_eq!(op.op_type, OperandType::Mem8);
+    assert_eq!(op.value, 0xFF); // Sentinel value for direct addressing
+    assert_eq!(op.disp, 0x1234); // Address stored in disp field
+
+    // Test 16-bit operand
+    let op = Cpu::decode_rm_operand(&modrm, false);
+    assert_eq!(op.op_type, OperandType::Mem16);
+    assert_eq!(op.value, 0xFF); // Sentinel value for direct addressing
+    assert_eq!(op.disp, 0x1234); // Address stored in disp field
+}
+
+#[test]
 fn test_operand_constructors() {
     let op = Operand::none();
     assert_eq!(op.op_type, OperandType::None);

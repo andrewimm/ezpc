@@ -766,11 +766,11 @@ impl Cpu {
                 }
             }
             AddressingMode::DirectAddress { addr } => {
-                use crate::cpu::decode::OperandType;
+                // Direct addressing: use 0xFF sentinel in value field, address in disp field
                 if is_byte {
-                    Operand::new(OperandType::Mem8, addr)
+                    Operand::mem8_disp(0xFF, addr as i16)
                 } else {
-                    Operand::new(OperandType::Mem16, addr)
+                    Operand::mem16_disp(0xFF, addr as i16)
                 }
             }
         }
