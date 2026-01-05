@@ -1415,3 +1415,67 @@ fn test_jmp_far() {
     harness.step(); // NOP
     assert_eq!(harness.cpu.ip, 0x0201);
 }
+
+#[test]
+fn test_call_far_indirect_direct_address() {
+    let mut harness = CpuHarness::new();
+    // Test CALL FAR [disp16] - opcode 0xFF /3 with direct addressing
+    // This tests the 0xFF sentinel bug fix for group instructions
+
+    // Set up stack
+    harness.cpu.regs[4] = 0x1000; // SP
+
+    // Store far pointer (IP=0x0100, CS=0x2000) at memory address 0x5000
+    harness.mem.write_u16(0x5000, 0x0100); // IP
+    harness.mem.write_u16(0x5002, 0x2000); // CS
+
+    // Place NOP at target address 0x2000:0x0100
+    harness.mem.write_u8(0x20000 + 0x0100, 0x90); // NOP
+
+    // CALL FAR [0x5000]: 0xFF 0x1E 0x00 0x50
+    // ModR/M: mod=00, reg=011 (CALL FAR), r/m=110 (direct addressing)
+    harness.load_program(&[0xFF, 0x1E, 0x00, 0x50], 0);
+
+    harness.step(); // CALL FAR [0x5000]
+
+    // Check CS:IP changed to 0x2000:0x0100
+    assert_eq!(harness.cpu.segments[1], 0x2000); // CS
+    assert_eq!(harness.cpu.ip, 0x0100);
+
+    // Check stack: CS and IP should be pushed
+    assert_eq!(harness.cpu.regs[4], 0x0FFC); // SP decremented by 4
+
+    // Check return IP (pushed second, at lower address)
+    let return_ip = harness.mem.read_u16(0x0FFC);
+    assert_eq!(return_ip, 4); // After the 4-byte instruction
+
+    // Check return CS (pushed first, at higher address)
+    let return_cs = harness.mem.read_u16(0x0FFE);
+    assert_eq!(return_cs, 0); // Original CS
+}
+
+#[test]
+fn test_jmp_far_indirect_direct_address() {
+    let mut harness = CpuHarness::new();
+    // Test JMP FAR [disp16] - opcode 0xFF /5 with direct addressing
+    // This tests the 0xFF sentinel bug fix for group instructions
+
+    // Store far pointer (IP=0x0200, CS=0x3000) at memory address 0x6000
+    harness.mem.write_u16(0x6000, 0x0200); // IP
+    harness.mem.write_u16(0x6002, 0x3000); // CS
+
+    // Fill target area with NOPs to avoid executing garbage
+    for i in 0..10 {
+        harness.mem.write_u8(0x30000 + 0x0200 + i, 0x90); // NOPs
+    }
+
+    // JMP FAR [0x6000]: 0xFF 0x2E 0x00 0x60
+    // ModR/M: mod=00, reg=101 (5=JMP FAR), r/m=110 (6=direct addressing)
+    harness.load_program(&[0xFF, 0x2E, 0x00, 0x60], 0);
+
+    harness.step(); // JMP FAR [0x6000]
+
+    // Check CS:IP changed to 0x3000:0x0200
+    assert_eq!(harness.cpu.segments[1], 0x3000); // CS
+    assert_eq!(harness.cpu.ip, 0x0200);
+}

@@ -1542,6 +1542,40 @@ fn test_dec_mem8() {
 }
 
 #[test]
+fn test_inc_mem8_direct_address() {
+    let mut harness = CpuHarness::new();
+    // Write 0x42 to memory at [0x1234], then INC byte [0x1234]
+    // This tests the 0xFF sentinel bug fix for group instructions with direct addressing
+    harness.mem.write_u8(0x1234, 0x42);
+
+    // INC byte [0x1234]: 0xFE 0x06 0x34 0x12
+    // ModR/M: mod=00, reg=000 (INC), r/m=110 (direct addressing)
+    harness.load_program(&[0xFE, 0x06, 0x34, 0x12], 0);
+
+    harness.step(); // INC byte [0x1234]
+
+    let value = harness.mem.read_u8(0x1234);
+    assert_eq!(value, 0x43);
+}
+
+#[test]
+fn test_dec_mem16_direct_address() {
+    let mut harness = CpuHarness::new();
+    // Write 0x1000 to memory at [0x5678], then DEC word [0x5678]
+    // This tests the 0xFF sentinel bug fix for group instructions with direct addressing
+    harness.mem.write_u16(0x5678, 0x1000);
+
+    // DEC word [0x5678]: 0xFF 0x0E 0x78 0x56
+    // ModR/M: mod=00, reg=001 (DEC), r/m=110 (direct addressing)
+    harness.load_program(&[0xFF, 0x0E, 0x78, 0x56], 0);
+
+    harness.step(); // DEC word [0x5678]
+
+    let value = harness.mem.read_u16(0x5678);
+    assert_eq!(value, 0x0FFF);
+}
+
+#[test]
 fn test_inc_bl() {
     let mut harness = CpuHarness::new();
     // MOV BL, 0x99; INC BL
