@@ -114,11 +114,12 @@ impl IoDevice for Keyboard {
 
                 // Bit 7 selects DIP switches (1) or keyboard data (0)
                 if value & 0x80 != 0 {
-                    // Latch DIP switches
+                    // Latch DIP switches and clear current scancode
                     self.latched_data = DIP_SWITCHES;
+                    self.current_scancode = None; // Clear scancode when switching to DIP mode
                 } else {
-                    // Latch keyboard scancode if available
-                    if let Some(scancode) = self.current_scancode.take() {
+                    // Latch keyboard scancode if available (copy, don't consume)
+                    if let Some(scancode) = self.current_scancode {
                         self.latched_data = scancode;
                     }
                     // If no scancode available, latched_data remains unchanged
@@ -237,7 +238,11 @@ mod tests {
         let scancode = kbd.read_u8(KEYBOARD_DATA_PORT);
         assert_eq!(scancode, 0x1E);
 
-        // current_scancode should be consumed by the latch operation
+        // current_scancode should NOT be consumed (stays until next scancode or DIP mode)
+        assert!(kbd.has_data());
+
+        // Switching to DIP mode should clear the scancode
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x80);
         assert!(!kbd.has_data());
     }
 
@@ -281,12 +286,15 @@ mod tests {
         kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x00); // Latch keyboard data (bit 7 = 0)
         assert_eq!(kbd.read_u8(KEYBOARD_DATA_PORT), 0x1E);
 
-        // Lower IRQ after read
+        // Clear the scancode by toggling to DIP mode and back
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x80); // DIP mode - clears scancode
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x00); // Back to keyboard mode
+
+        // Lower IRQ after clearing scancode
         kbd.tick(1, &mut pic);
 
         // Second tick gets second scancode
         kbd.tick(1, &mut pic);
-        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x00); // Latch keyboard data (bit 7 = 0)
         assert_eq!(kbd.read_u8(KEYBOARD_DATA_PORT), 0x9E);
     }
 
