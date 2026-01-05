@@ -117,6 +117,7 @@ impl IoDevice for Keyboard {
                     // Latch DIP switches and clear current scancode
                     self.latched_data = DIP_SWITCHES;
                     self.current_scancode = None; // Clear scancode when switching to DIP mode
+                    // IRQ will be lowered on next tick when current_scancode is None
                 } else {
                     // Latch keyboard scancode if available (copy, don't consume)
                     if let Some(scancode) = self.current_scancode {
@@ -138,6 +139,13 @@ impl IoDevice for Keyboard {
     fn tick(&mut self, _cycles: u16, pic: &mut Pic) {
         // If we don't have a pending scancode, try to fetch one from the queue
         if self.current_scancode.is_none() {
+            // First, lower IRQ if it's still high (ensures edge detection for next scancode)
+            if self.irq_level {
+                pic.set_irq_level(1, false);
+                self.irq_level = false;
+            }
+
+            // Now try to fetch a new scancode
             let scancode = {
                 let mut queue = self.scancode_queue.write().unwrap();
                 queue.pop_front()
@@ -152,15 +160,9 @@ impl IoDevice for Keyboard {
                     self.latched_data = scancode;
                 }
 
-                // Raise IRQ1 if not already raised
-                if !self.irq_level {
-                    pic.set_irq_level(1, true); // IRQ1 for keyboard
-                    self.irq_level = true;
-                }
-            } else if self.irq_level {
-                // No data available and IRQ is still high, lower it
-                pic.set_irq_level(1, false);
-                self.irq_level = false;
+                // Raise IRQ1 (creates edge since we just lowered it)
+                pic.set_irq_level(1, true);
+                self.irq_level = true;
             }
         }
     }
