@@ -986,3 +986,112 @@ fn test_cbw_cwd_sequence() {
     assert_eq!(harness.cpu.regs[0], 0xFF80); // AX = 0xFF80 (unchanged)
     assert_eq!(harness.cpu.regs[2], 0xFFFF); // DX = 0xFFFF
 }
+
+#[test]
+fn test_xlat_basic() {
+    let mut harness = CpuHarness::new();
+
+    // Setup: Create a simple translation table at DS:0x1000
+    // Table maps each byte to its bitwise NOT
+    let table_base = 0x1000u32;
+    for i in 0..256u16 {
+        harness.mem.write_u8(table_base + i as u32, (!i) as u8);
+    }
+
+    // XLAT instruction
+    harness.load_program(&[0xD7], 0);
+
+    // Setup registers:
+    // BX = 0x1000 (table base)
+    // AL = 0x55 (index)
+    // DS = 0 (segment)
+    harness.cpu.regs[3] = 0x1000; // BX
+    harness.cpu.write_reg8(0, 0x55); // AL
+    harness.cpu.segments[3] = 0; // DS
+
+    // Execute XLAT
+    harness.step();
+
+    // Verify: AL should contain table[0x55] = !0x55 = 0xAA
+    assert_eq!(harness.cpu.read_reg8(0), 0xAA);
+    assert_eq!(harness.cpu.ip, 1);
+}
+
+#[test]
+fn test_xlat_zero_index() {
+    let mut harness = CpuHarness::new();
+
+    // Setup: Create translation table at DS:0x2000
+    let table_base = 0x2000u32;
+    harness.mem.write_u8(table_base, 0x42); // First entry
+
+    // XLAT instruction
+    harness.load_program(&[0xD7], 0);
+
+    // Setup registers:
+    // BX = 0x2000 (table base)
+    // AL = 0x00 (index to first entry)
+    // DS = 0
+    harness.cpu.regs[3] = 0x2000; // BX
+    harness.cpu.write_reg8(0, 0x00); // AL
+    harness.cpu.segments[3] = 0; // DS
+
+    // Execute XLAT
+    harness.step();
+
+    // Verify: AL should contain table[0] = 0x42
+    assert_eq!(harness.cpu.read_reg8(0), 0x42);
+}
+
+#[test]
+fn test_xlat_max_index() {
+    let mut harness = CpuHarness::new();
+
+    // Setup: Create translation table at DS:0x100
+    let table_base = 0x100u32;
+    harness.mem.write_u8(table_base + 0xFF, 0x99); // Last entry
+
+    // XLAT instruction
+    harness.load_program(&[0xD7], 0);
+
+    // Setup registers:
+    // BX = 0x100 (table base)
+    // AL = 0xFF (index to last entry)
+    // DS = 0
+    harness.cpu.regs[3] = 0x100; // BX
+    harness.cpu.write_reg8(0, 0xFF); // AL
+    harness.cpu.segments[3] = 0; // DS
+
+    // Execute XLAT
+    harness.step();
+
+    // Verify: AL should contain table[0xFF] = 0x99
+    assert_eq!(harness.cpu.read_reg8(0), 0x99);
+}
+
+#[test]
+fn test_xlat_with_segment_override() {
+    let mut harness = CpuHarness::new();
+
+    // Setup: Create translation table using ES segment override
+    // ES = 0x200, BX = 0x100, AL = 0x10
+    // Physical address = (0x200 << 4) + 0x100 + 0x10 = 0x2000 + 0x100 + 0x10 = 0x2110
+    harness.cpu.segments[0] = 0x200; // ES
+    let physical_addr = 0x2110u32;
+    harness.mem.write_u8(physical_addr, 0x77);
+
+    // ES segment override (0x26) + XLAT (0xD7)
+    harness.load_program(&[0x26, 0xD7], 0);
+
+    // Setup registers:
+    // BX = 0x100 (table base offset)
+    // AL = 0x10 (index)
+    harness.cpu.regs[3] = 0x100; // BX
+    harness.cpu.write_reg8(0, 0x10); // AL
+
+    // Execute both instructions (prefix + XLAT)
+    harness.step(); // This executes both prefix and XLAT together
+
+    // Verify: AL should contain value from ES:0x100+0x10
+    assert_eq!(harness.cpu.read_reg8(0), 0x77);
+}

@@ -206,3 +206,36 @@ pub fn cwd(cpu: &mut Cpu, _mem: &mut MemoryBus, _instr: &DecodedInstruction) {
     let dx = if (ax & 0x8000) != 0 { 0xFFFF } else { 0x0000 };
     cpu.write_reg16(2, dx); // DX
 }
+
+/// XLAT - Table Lookup Translation
+/// Opcode: 0xD7
+///
+/// Translates a byte using a lookup table. AL is used as an unsigned index
+/// into a 256-byte table pointed to by BX. The byte at DS:[BX+AL] is loaded
+/// into AL.
+///
+/// This instruction is commonly used for character set translation, encryption,
+/// or any byte-to-byte mapping operation.
+/// No flags are affected.
+pub fn xlat(cpu: &mut Cpu, mem: &mut MemoryBus, _instr: &DecodedInstruction) {
+    // Get AL (index into table)
+    let al = cpu.read_reg8(0); // AL
+
+    // Get BX (table base address)
+    let bx = cpu.read_reg16(3); // BX
+
+    // Calculate offset: BX + AL
+    let offset = bx.wrapping_add(al as u16);
+
+    // Get segment (DS by default, or segment override)
+    let ds = cpu
+        .segment_override
+        .map(|s| cpu.read_seg(s))
+        .unwrap_or_else(|| cpu.read_seg(3)); // Default to DS (segment 3)
+
+    // Read byte from DS:[BX+AL]
+    let value = cpu.read_mem8(mem, ds, offset);
+
+    // Store result in AL
+    cpu.write_reg8(0, value); // AL
+}
