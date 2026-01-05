@@ -180,3 +180,29 @@ pub fn mov_moffs_ax(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstructi
     let ax_value = cpu.read_reg16(0); // AX
     cpu.write_operand(mem, &instr.dst, ax_value);
 }
+
+/// CBW - Convert Byte to Word
+/// Opcode: 0x98
+///
+/// Sign-extends AL into AH, making AX a signed 16-bit version of the signed 8-bit value in AL.
+/// If bit 7 of AL is 0, AH is set to 0x00.
+/// If bit 7 of AL is 1, AH is set to 0xFF.
+/// No flags are affected.
+pub fn cbw(cpu: &mut Cpu, _mem: &mut MemoryBus, _instr: &DecodedInstruction) {
+    let al = cpu.read_reg8(0); // AL
+    let ah = if (al & 0x80) != 0 { 0xFF } else { 0x00 };
+    cpu.write_reg8(4, ah); // AH
+}
+
+/// CWD - Convert Word to Doubleword
+/// Opcode: 0x99
+///
+/// Sign-extends AX into DX:AX, making DX:AX a signed 32-bit version of the signed 16-bit value in AX.
+/// If bit 15 of AX is 0, DX is set to 0x0000.
+/// If bit 15 of AX is 1, DX is set to 0xFFFF.
+/// No flags are affected.
+pub fn cwd(cpu: &mut Cpu, _mem: &mut MemoryBus, _instr: &DecodedInstruction) {
+    let ax = cpu.read_reg16(0); // AX
+    let dx = if (ax & 0x8000) != 0 { 0xFFFF } else { 0x0000 };
+    cpu.write_reg16(2, dx); // DX
+}

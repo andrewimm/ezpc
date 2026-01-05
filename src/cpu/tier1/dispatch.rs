@@ -172,8 +172,8 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     data_transfer::xchg_ax_r16, // 0x95: XCHG AX, BP
     data_transfer::xchg_ax_r16, // 0x96: XCHG AX, SI
     data_transfer::xchg_ax_r16, // 0x97: XCHG AX, DI
-    invalid_opcode,             // 0x98: CBW (not implemented yet)
-    invalid_opcode,             // 0x99: CWD (not implemented yet)
+    data_transfer::cbw,         // 0x98: CBW - Convert Byte to Word
+    data_transfer::cwd,         // 0x99: CWD - Convert Word to Doubleword
     control_flow::call_far,     // 0x9A: CALL far
     invalid_opcode,             // 0x9B: WAIT (not implemented yet)
     flags::pushf,               // 0x9C: PUSHF - Push FLAGS register

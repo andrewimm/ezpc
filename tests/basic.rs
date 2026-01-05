@@ -805,3 +805,184 @@ fn test_mov_moffs_with_segment_override() {
         "Should not write to DS:0x0060"
     );
 }
+
+#[test]
+fn test_cbw_positive() {
+    let mut harness = CpuHarness::new();
+    // Set AL to a positive value (0x7F = 127)
+    // CBW should extend to 0x007F
+    harness.load_program(
+        &[
+            0xB0, 0x7F, // MOV AL, 0x7F
+            0x98, // CBW
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 0x7F
+    assert_eq!(harness.cpu.read_reg8(0), 0x7F); // AL = 0x7F
+
+    harness.step(); // CBW
+    assert_eq!(harness.cpu.read_reg8(4), 0x00); // AH should be 0x00
+    assert_eq!(harness.cpu.regs[0], 0x007F); // AX = 0x007F
+}
+
+#[test]
+fn test_cbw_negative() {
+    let mut harness = CpuHarness::new();
+    // Set AL to a negative value (0x80 = -128)
+    // CBW should extend to 0xFF80
+    harness.load_program(
+        &[
+            0xB0, 0x80, // MOV AL, 0x80
+            0x98, // CBW
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 0x80
+    assert_eq!(harness.cpu.read_reg8(0), 0x80); // AL = 0x80
+
+    harness.step(); // CBW
+    assert_eq!(harness.cpu.read_reg8(4), 0xFF); // AH should be 0xFF
+    assert_eq!(harness.cpu.regs[0], 0xFF80); // AX = 0xFF80
+}
+
+#[test]
+fn test_cbw_zero() {
+    let mut harness = CpuHarness::new();
+    // Set AL to zero
+    // CBW should keep it as 0x0000
+    harness.load_program(
+        &[
+            0xB0, 0x00, // MOV AL, 0x00
+            0x98, // CBW
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 0x00
+    harness.step(); // CBW
+    assert_eq!(harness.cpu.regs[0], 0x0000); // AX = 0x0000
+}
+
+#[test]
+fn test_cbw_boundary() {
+    let mut harness = CpuHarness::new();
+    // Test boundary value 0xFF (-1 in signed)
+    // CBW should extend to 0xFFFF
+    harness.load_program(
+        &[
+            0xB0, 0xFF, // MOV AL, 0xFF
+            0x98, // CBW
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 0xFF
+    harness.step(); // CBW
+    assert_eq!(harness.cpu.regs[0], 0xFFFF); // AX = 0xFFFF
+}
+
+#[test]
+fn test_cwd_positive() {
+    let mut harness = CpuHarness::new();
+    // Set AX to a positive value (0x7FFF = 32767)
+    // CWD should extend to DX:AX = 0x0000:0x7FFF
+    harness.load_program(
+        &[
+            0xB8, 0xFF, 0x7F, // MOV AX, 0x7FFF
+            0x99, // CWD
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AX, 0x7FFF
+    assert_eq!(harness.cpu.regs[0], 0x7FFF); // AX = 0x7FFF
+
+    harness.step(); // CWD
+    assert_eq!(harness.cpu.regs[2], 0x0000); // DX should be 0x0000
+}
+
+#[test]
+fn test_cwd_negative() {
+    let mut harness = CpuHarness::new();
+    // Set AX to a negative value (0x8000 = -32768)
+    // CWD should extend to DX:AX = 0xFFFF:0x8000
+    harness.load_program(
+        &[
+            0xB8, 0x00, 0x80, // MOV AX, 0x8000
+            0x99, // CWD
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AX, 0x8000
+    assert_eq!(harness.cpu.regs[0], 0x8000); // AX = 0x8000
+
+    harness.step(); // CWD
+    assert_eq!(harness.cpu.regs[2], 0xFFFF); // DX should be 0xFFFF
+}
+
+#[test]
+fn test_cwd_zero() {
+    let mut harness = CpuHarness::new();
+    // Set AX to zero
+    // CWD should keep it as 0x0000:0x0000
+    harness.load_program(
+        &[
+            0xB8, 0x00, 0x00, // MOV AX, 0x0000
+            0x99, // CWD
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AX, 0x0000
+    harness.step(); // CWD
+    assert_eq!(harness.cpu.regs[0], 0x0000); // AX = 0x0000
+    assert_eq!(harness.cpu.regs[2], 0x0000); // DX = 0x0000
+}
+
+#[test]
+fn test_cwd_boundary() {
+    let mut harness = CpuHarness::new();
+    // Test boundary value 0xFFFF (-1 in signed)
+    // CWD should extend to 0xFFFF:0xFFFF
+    harness.load_program(
+        &[
+            0xB8, 0xFF, 0xFF, // MOV AX, 0xFFFF
+            0x99, // CWD
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AX, 0xFFFF
+    harness.step(); // CWD
+    assert_eq!(harness.cpu.regs[0], 0xFFFF); // AX = 0xFFFF
+    assert_eq!(harness.cpu.regs[2], 0xFFFF); // DX = 0xFFFF
+}
+
+#[test]
+fn test_cbw_cwd_sequence() {
+    let mut harness = CpuHarness::new();
+    // Test CBW followed by CWD: convert 8-bit to 32-bit
+    // AL = 0x80 (-128) -> AX = 0xFF80 -> DX:AX = 0xFFFF:0xFF80
+    harness.load_program(
+        &[
+            0xB0, 0x80, // MOV AL, 0x80
+            0x98, // CBW
+            0x99, // CWD
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 0x80
+    assert_eq!(harness.cpu.read_reg8(0), 0x80); // AL = 0x80
+
+    harness.step(); // CBW
+    assert_eq!(harness.cpu.regs[0], 0xFF80); // AX = 0xFF80
+
+    harness.step(); // CWD
+    assert_eq!(harness.cpu.regs[0], 0xFF80); // AX = 0xFF80 (unchanged)
+    assert_eq!(harness.cpu.regs[2], 0xFFFF); // DX = 0xFFFF
+}
