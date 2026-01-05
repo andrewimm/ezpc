@@ -137,6 +137,29 @@ impl IoDevice for Keyboard {
     fn write_u8(&mut self, port: u16, value: u8) {
         match port {
             SYSTEM_CONTROL_PORT_B => {
+                // Detect keyboard reset via bit 6 transitions
+                // Bit 6: 0 = keyboard clock enabled, 1 = keyboard clock disabled (reset)
+                let old_bit6 = (self.port_61_state & 0x40) != 0;
+                let new_bit6 = (value & 0x40) != 0;
+
+                match (old_bit6, new_bit6) {
+                    (false, true) => {
+                        // Keyboard clock disabled (reset asserted)
+                        self.reset_state = KeyboardResetState::ResetAsserted;
+                        // Clear any pending scancode during reset
+                        self.current_scancode = None;
+                    }
+                    (true, false) => {
+                        // Keyboard clock re-enabled (reset released)
+                        // Schedule 0xAA response for next tick
+                        self.reset_state = KeyboardResetState::ResetPending;
+                        self.reset_scancode_pending = true;
+                    }
+                    _ => {
+                        // No transition on bit 6
+                    }
+                }
+
                 self.port_61_state = value;
 
                 // Bit 7 selects DIP switches (1) or keyboard data (0)
