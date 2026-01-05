@@ -12,6 +12,7 @@ use std::sync::{Arc, RwLock};
 /// Keyboard I/O ports
 const KEYBOARD_DATA_PORT: u16 = 0x60;
 const SYSTEM_CONTROL_PORT_B: u16 = 0x61; // System Control Port B (8255 PPI)
+const SYSTEM_CONTROL_PORT_C: u16 = 0x62; // System Control Port C (8255 PPI)
 const KEYBOARD_STATUS_PORT: u16 = 0x64;
 
 /// Status register bits
@@ -126,6 +127,10 @@ impl IoDevice for Keyboard {
                 // Bit 0: Timer 2 gate to speaker status
                 0x00
             }
+            SYSTEM_CONTROL_PORT_C => {
+                // System Control Port C - always returns 0x00
+                0x00
+            }
             KEYBOARD_STATUS_PORT => {
                 // Return status register
                 self.get_status()
@@ -175,6 +180,10 @@ impl IoDevice for Keyboard {
                     }
                     // If no scancode available, latched_data remains unchanged
                 }
+            }
+            SYSTEM_CONTROL_PORT_C => {
+                // System Control Port C - writes are ignored
+                let _ = value;
             }
             KEYBOARD_STATUS_PORT => {
                 // Command register - not implemented yet
@@ -374,6 +383,21 @@ mod tests {
         // Port 0x62 bits 7-6 should always be 0 (parity checking disabled)
         let value = kbd.read_u8(SYSTEM_CONTROL_PORT_B);
         assert_eq!(value & 0xC0, 0x00);
+    }
+
+    #[test]
+    fn test_system_control_port_c_returns_zero() {
+        let queue = Arc::new(RwLock::new(VecDeque::new()));
+        let mut kbd = Keyboard::new(queue);
+        // Port 0x62 (Port C) should always return 0x00
+        assert_eq!(kbd.read_u8(SYSTEM_CONTROL_PORT_C), 0x00);
+
+        // Writes should be ignored (no panic or error)
+        kbd.write_u8(SYSTEM_CONTROL_PORT_C, 0xFF);
+        kbd.write_u8(SYSTEM_CONTROL_PORT_C, 0xAA);
+
+        // Should still return 0x00 after writes
+        assert_eq!(kbd.read_u8(SYSTEM_CONTROL_PORT_C), 0x00);
     }
 
     #[test]
