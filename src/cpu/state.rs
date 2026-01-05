@@ -273,12 +273,13 @@ impl Cpu {
     }
 
     /// Compute flags from lazy state
-    /// OF and AF are computed eagerly and preserved from self.flags
+    /// OF, AF, and control flags (DF, IF, TF) are set eagerly and preserved from self.flags
+    /// Other flags (CF, ZF, SF, PF) are computed lazily from last_result and last_op
     fn compute_flags(&self) -> u16 {
         let mut flags = 0b0010; // Bit 1 always set on 8088
 
-        // Preserve OF and AF (they are computed eagerly)
-        flags |= self.flags & (Self::OF | Self::AF);
+        // Preserve OF, AF, and control flags (DF, IF, TF) which are set eagerly
+        flags |= self.flags & (Self::OF | Self::AF | Self::DF | Self::IF | Self::TF);
 
         match self.last_op {
             FlagOp::None => return self.flags | 0b0010, // Ensure bit 1 is set

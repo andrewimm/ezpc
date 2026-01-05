@@ -739,3 +739,266 @@ fn test_repe_scasb_count_repeated_char() {
     assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::ZF)); // Not equal
     assert_eq!(harness.cpu.read_reg16(7), 0x1005);
 }
+
+//
+// BIOS Memory Test Pattern Tests
+//
+
+#[test]
+fn test_rep_stosb_then_lodsb() {
+    // Replicates BIOS memory test pattern: fill with REP STOSB, read back with LODSB
+    let mut harness = CpuHarness::new();
+
+    // Fill memory with 0xAA using REP STOSB
+    // CLD; MOV AL, 0xAA; MOV CX, 0x10; MOV DI, 0x1000; REP STOSB
+    harness.load_program(
+        &[
+            0xFC, // CLD
+            0xB0, 0xAA, // MOV AL, 0xAA
+            0xB9, 0x10, 0x00, // MOV CX, 16
+            0xBF, 0x00, 0x10, // MOV DI, 0x1000
+            0xF3, 0xAA, // REP STOSB
+        ],
+        0,
+    );
+
+    harness.step(); // CLD
+    harness.step(); // MOV AL, 0xAA
+    harness.step(); // MOV CX, 16
+    harness.step(); // MOV DI, 0x1000
+
+    // Execute REP STOSB - should write 16 bytes
+    for _ in 0..16 {
+        harness.step();
+    }
+
+    // Verify memory was filled
+    for i in 0..16 {
+        assert_eq!(
+            harness.mem.read_u8(0x1000 + i),
+            0xAA,
+            "Memory at 0x{:04X} should be 0xAA",
+            0x1000 + i
+        );
+    }
+
+    // Now read it back with LODSB
+    // MOV SI, 0x1000; LODSB
+    harness.load_program(&[0xBE, 0x00, 0x10, 0xAC], 0); // MOV SI, 0x1000; LODSB
+    harness.cpu.ip = 0;
+
+    harness.step(); // MOV SI, 0x1000
+    harness.step(); // LODSB
+
+    // Check that AL contains the value we wrote
+    assert_eq!(harness.cpu.read_reg8(0), 0xAA);
+}
+
+#[test]
+fn test_stosb_lodsb_stosb_pattern() {
+    // Replicates BIOS pattern: write, read, compare, write new value
+    // This is the pattern: STOSB (write 0xAA), LODSB (read), STOSB (write 0x55)
+    let mut harness = CpuHarness::new();
+
+    // CLD
+    // MOV AL, 0xAA; MOV DI, 0x1000; STOSB
+    // DEC DI; MOV SI, DI; LODSB
+    // CMP AL, 0xAA
+    // MOV AL, 0x55; DEC DI; STOSB
+    harness.load_program(
+        &[
+            0xFC, // CLD
+            0xB0, 0xAA, // MOV AL, 0xAA
+            0xBF, 0x00, 0x10, // MOV DI, 0x1000
+            0xAA, // STOSB (writes 0xAA to ES:0x1000, DI becomes 0x1001)
+            0x4F, // DEC DI (DI becomes 0x1000)
+            0x89, 0xFE, // MOV SI, DI (SI = 0x1000)
+            0xAC, // LODSB (reads from DS:0x1000 into AL, SI becomes 0x1001)
+            0x3C, 0xAA, // CMP AL, 0xAA
+            0xB0, 0x55, // MOV AL, 0x55
+            0x4F, // DEC DI (DI becomes 0x0FFF)
+            0xAA, // STOSB (writes 0x55 to ES:0x0FFF, DI becomes 0x1000)
+        ],
+        0,
+    );
+
+    harness.step(); // CLD
+    harness.step(); // MOV AL, 0xAA
+    harness.step(); // MOV DI, 0x1000
+    harness.step(); // STOSB
+
+    // Verify 0xAA was written
+    assert_eq!(harness.mem.read_u8(0x1000), 0xAA);
+    assert_eq!(harness.cpu.read_reg16(7), 0x1001); // DI after STOSB
+
+    harness.step(); // DEC DI
+    assert_eq!(harness.cpu.read_reg16(7), 0x1000);
+
+    harness.step(); // MOV SI, DI
+    assert_eq!(harness.cpu.read_reg16(6), 0x1000); // SI
+
+    harness.step(); // LODSB
+    assert_eq!(harness.cpu.read_reg8(0), 0xAA); // AL should have loaded 0xAA
+    assert_eq!(harness.cpu.read_reg16(6), 0x1001); // SI after LODSB
+
+    harness.step(); // CMP AL, 0xAA
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF)); // Should be equal
+
+    harness.step(); // MOV AL, 0x55
+    harness.step(); // DEC DI
+    harness.step(); // STOSB
+
+    // Verify new value was written
+    assert_eq!(harness.mem.read_u8(0x0FFF), 0x55);
+}
+
+#[test]
+fn test_bios_memory_test_loop() {
+    // Replicates the BIOS memory test loop more closely with all code in one program
+    let mut harness = CpuHarness::new();
+
+    const START_ADDR: u16 = 0x2000; // Use 0x2000 to avoid any conflicts
+    const COUNT: u8 = 4; // Small count for easier debugging
+
+    // Complete program:
+    // 1. Fill memory with REP STOSB
+    // 2. Loop backwards with LODSB/STOSB
+    harness.load_program(
+        &[
+            // Fill with 0xAA
+            0xFC, // 0: CLD
+            0xB0,
+            0xAA, // 1: MOV AL, 0xAA
+            0xB9,
+            COUNT,
+            0x00, // 3: MOV CX, COUNT
+            0xBF,
+            (START_ADDR & 0xFF) as u8,
+            (START_ADDR >> 8) as u8, // 6: MOV DI, START_ADDR
+            0xF3,
+            0xAA, // 9: REP STOSB
+            // Set up for backward loop
+            0xFD, // 11: STD
+            0x4F, // 12: DEC DI
+            0x89,
+            0xFE, // 13: MOV SI, DI
+            0xB9,
+            COUNT,
+            0x00, // 15: MOV CX, COUNT
+            // Loop: LODSB, check if 0xAA, write 0x55 with STOSB
+            // loop_start (offset 18):
+            0xAC, // 18: LODSB
+            0x3C,
+            0xAA, // 19: CMP AL, 0xAA
+            0x75,
+            0x05, // 21: JNZ exit (skip ahead 5 bytes)
+            0xB0,
+            0x55, // 23: MOV AL, 0x55
+            0xAA, // 25: STOSB
+            0xE2,
+            0xF6, // 26: LOOP loop_start (loop back to offset 18, from 0x1C to 0x12 = -10)
+            // exit (offset 28):
+            0xF4, // 28: HLT
+        ],
+        0,
+    );
+
+    // Execute: CLD, MOV AL, MOV CX, MOV DI
+    harness.step(); // CLD
+    harness.step(); // MOV AL, 0xAA
+    harness.step(); // MOV CX, COUNT
+    harness.step(); // MOV DI, START_ADDR
+
+    // Execute REP STOSB (will iterate COUNT times)
+    for _ in 0..COUNT {
+        harness.step();
+    }
+
+    // Verify memory was filled with 0xAA
+    for i in 0..COUNT {
+        assert_eq!(
+            harness.mem.read_u8((START_ADDR + i as u16) as u32),
+            0xAA,
+            "After fill: memory at {} should be 0xAA",
+            START_ADDR + i as u16
+        );
+    }
+
+    // Execute: STD, DEC DI, MOV SI DI, MOV CX
+    harness.step(); // STD
+    harness.step(); // DEC DI
+    harness.step(); // MOV SI, DI
+    harness.step(); // MOV CX, COUNT
+
+    // Now execute the loop: LODSB, CMP, JNZ, MOV, STOSB, LOOP
+    for i in 0..COUNT {
+        harness.step(); // LODSB
+        let al = harness.cpu.read_reg8(0);
+        assert_eq!(
+            al, 0xAA,
+            "Iteration {}: LODSB should read 0xAA, got 0x{:02X}",
+            i, al
+        );
+
+        harness.step(); // CMP AL, 0xAA
+        harness.step(); // JNZ (should not jump)
+        harness.step(); // MOV AL, 0x55
+        harness.step(); // STOSB
+        harness.step(); // LOOP (or fall through on last iteration)
+    }
+
+    // Should hit HLT
+    harness.step();
+    assert!(harness.cpu.halted);
+
+    // Verify memory now contains 0x55
+    for i in 0..COUNT {
+        assert_eq!(
+            harness.mem.read_u8((START_ADDR + i as u16) as u32),
+            0x55,
+            "After loop: memory at {} should be 0x55",
+            START_ADDR + i as u16
+        );
+    }
+}
+
+#[test]
+fn test_lodsb_stosb_same_address() {
+    // Simplified test: write with STOSB, then read the same address with LODSB
+    let mut harness = CpuHarness::new();
+
+    // Write 0xAA to address 0x1000 with STOSB
+    // CLD; MOV AL, 0xAA; MOV DI, 0x1000; STOSB
+    harness.load_program(
+        &[
+            0xFC, // CLD
+            0xB0, 0xAA, // MOV AL, 0xAA
+            0xBF, 0x00, 0x10, // MOV DI, 0x1000
+            0xAA, // STOSB
+        ],
+        0,
+    );
+
+    harness.step(); // CLD
+    harness.step(); // MOV AL, 0xAA
+    harness.step(); // MOV DI, 0x1000
+    harness.step(); // STOSB
+
+    // Verify memory at 0x1000 contains 0xAA
+    assert_eq!(harness.mem.read_u8(0x1000), 0xAA);
+
+    // Now read from the same address with LODSB
+    // MOV SI, 0x1000; LODSB
+    harness.load_program(&[0xBE, 0x00, 0x10, 0xAC], 0);
+    harness.cpu.ip = 0;
+
+    harness.step(); // MOV SI, 0x1000
+    harness.step(); // LODSB
+
+    // AL should contain 0xAA
+    assert_eq!(
+        harness.cpu.read_reg8(0),
+        0xAA,
+        "LODSB should read 0xAA from address 0x1000"
+    );
+}
