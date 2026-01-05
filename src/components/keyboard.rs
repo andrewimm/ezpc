@@ -84,8 +84,14 @@ impl IoDevice for Keyboard {
     fn read_u8(&mut self, port: u16) -> u8 {
         match port {
             KEYBOARD_DATA_PORT => {
-                // Return latched data (either DIP switches or keyboard scancode)
-                self.latched_data
+                let data = self.latched_data;
+
+                // If we're in keyboard mode (bit 7 = 0), clear the scancode after reading
+                if self.port_61_state & 0x80 == 0 {
+                    self.current_scancode = None;
+                }
+
+                data
             }
             SYSTEM_CONTROL_PORT_B => {
                 // System Control Port B - motherboard status
@@ -236,15 +242,11 @@ mod tests {
         // Latch keyboard data by writing to port 0x61 with bit 7 = 0
         kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x00);
 
-        // Read the scancode
+        // Read the scancode - this automatically clears it in keyboard mode
         let scancode = kbd.read_u8(KEYBOARD_DATA_PORT);
         assert_eq!(scancode, 0x1E);
 
-        // current_scancode should NOT be consumed (stays until next scancode or DIP mode)
-        assert!(kbd.has_data());
-
-        // Switching to DIP mode should clear the scancode
-        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x80);
+        // current_scancode should be cleared after reading in keyboard mode
         assert!(!kbd.has_data());
     }
 
@@ -285,14 +287,10 @@ mod tests {
 
         // First tick gets first scancode
         kbd.tick(1, &mut pic);
-        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x00); // Latch keyboard data (bit 7 = 0)
+        // Reading port 0x60 automatically clears the scancode in keyboard mode (bit 7=0)
         assert_eq!(kbd.read_u8(KEYBOARD_DATA_PORT), 0x1E);
 
-        // Clear the scancode by toggling to DIP mode and back
-        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x80); // DIP mode - clears scancode
-        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x00); // Back to keyboard mode
-
-        // Lower IRQ after clearing scancode
+        // Tick to lower IRQ (scancode was cleared by read)
         kbd.tick(1, &mut pic);
 
         // Second tick gets second scancode
