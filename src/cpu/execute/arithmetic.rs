@@ -651,7 +651,7 @@ pub fn group_80(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) 
         1 => panic!("OR r/m8, imm8 not implemented yet"),
         2 => adc_rm_imm(cpu, mem, instr), // ADC r/m8, imm8
         3 => sbb_rm_imm(cpu, mem, instr), // SBB r/m8, imm8
-        4 => panic!("AND r/m8, imm8 not implemented yet"),
+        4 => super::logic::and_rm_imm(cpu, mem, instr), // AND r/m8, imm8
         5 => sub_rm_imm(cpu, mem, instr), // SUB r/m8, imm8
         6 => panic!("XOR r/m8, imm8 not implemented yet"),
         7 => cmp_rm_imm(cpu, mem, instr), // CMP r/m8, imm8
@@ -669,7 +669,7 @@ pub fn group_81(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) 
         1 => panic!("OR r/m16, imm16 not implemented yet"),
         2 => adc_rm_imm(cpu, mem, instr), // ADC r/m16, imm16
         3 => sbb_rm_imm(cpu, mem, instr), // SBB r/m16, imm16
-        4 => panic!("AND r/m16, imm16 not implemented yet"),
+        4 => super::logic::and_rm_imm(cpu, mem, instr), // AND r/m16, imm16
         5 => sub_rm_imm(cpu, mem, instr), // SUB r/m16, imm16
         6 => panic!("XOR r/m16, imm16 not implemented yet"),
         7 => cmp_rm_imm(cpu, mem, instr), // CMP r/m16, imm16
@@ -687,7 +687,7 @@ pub fn group_83(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) 
         1 => panic!("OR r/m16, imm8 not implemented yet"),
         2 => adc_rm_imm(cpu, mem, instr), // ADC r/m16, imm8 (sign-extended)
         3 => sbb_rm_imm(cpu, mem, instr), // SBB r/m16, imm8 (sign-extended)
-        4 => panic!("AND r/m16, imm8 not implemented yet"),
+        4 => super::logic::and_rm_imm(cpu, mem, instr), // AND r/m16, imm8 (sign-extended)
         5 => sub_rm_imm(cpu, mem, instr), // SUB r/m16, imm8 (sign-extended)
         6 => panic!("XOR r/m16, imm8 not implemented yet"),
         7 => cmp_rm_imm(cpu, mem, instr), // CMP r/m16, imm8 (sign-extended)

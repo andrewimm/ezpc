@@ -139,6 +139,104 @@ fn test_and_rm_r_word() {
     assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::OF)); // OF should be clear
 }
 
+#[test]
+fn test_and_rm8_imm8() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0xFF; AND AL, 0x0F (using Group 0x80, reg=4)
+    harness.load_program(&[0xB0, 0xFF, 0x80, 0xE0, 0x0F], 0);
+
+    harness.step(); // MOV AL, 0xFF
+    harness.step(); // AND AL, 0x0F (opcode 0x80, ModR/M 0xE0, imm8 0x0F)
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x0F); // AL = 0x0F
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // CF should be clear
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::OF)); // OF should be clear
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::ZF)); // ZF should be clear
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::SF)); // SF should be clear
+}
+
+#[test]
+fn test_and_rm16_imm16() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0xFFFF; AND AX, 0x00FF (using Group 0x81, reg=4)
+    harness.load_program(&[0xB8, 0xFF, 0xFF, 0x81, 0xE0, 0xFF, 0x00], 0);
+
+    harness.step(); // MOV AX, 0xFFFF
+    harness.step(); // AND AX, 0x00FF (opcode 0x81, ModR/M 0xE0, imm16 0x00FF)
+
+    assert_eq!(harness.cpu.regs[0], 0x00FF); // AX = 0x00FF
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // CF should be clear
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::OF)); // OF should be clear
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::ZF)); // ZF should be clear
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::SF)); // SF should be clear
+}
+
+#[test]
+fn test_and_rm16_imm8() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0xFFFF; AND AX, 0x0F (using Group 0x83, reg=4, sign-extended)
+    harness.load_program(&[0xB8, 0xFF, 0xFF, 0x83, 0xE0, 0x0F], 0);
+
+    harness.step(); // MOV AX, 0xFFFF
+    harness.step(); // AND AX, 0x0F (opcode 0x83, ModR/M 0xE0, imm8 0x0F sign-extended to 0x000F)
+
+    assert_eq!(harness.cpu.regs[0], 0x000F); // AX = 0x000F
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // CF should be clear
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::OF)); // OF should be clear
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::ZF)); // ZF should be clear
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::SF)); // SF should be clear
+}
+
+#[test]
+fn test_and_rm16_imm8_sign_extended() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0xFFFF; AND AX, 0xFF (using Group 0x83, reg=4, sign-extended to 0xFFFF)
+    harness.load_program(&[0xB8, 0xFF, 0xFF, 0x83, 0xE0, 0xFF], 0);
+
+    harness.step(); // MOV AX, 0xFFFF
+    harness.step(); // AND AX, 0xFF (opcode 0x83, ModR/M 0xE0, imm8 0xFF sign-extended to 0xFFFF)
+
+    assert_eq!(harness.cpu.regs[0], 0xFFFF); // AX = 0xFFFF
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // CF should be clear
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::OF)); // OF should be clear
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::ZF)); // ZF should be clear
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::SF)); // SF should be set (bit 15 is 1)
+}
+
+#[test]
+fn test_and_rm8_imm8_zero_result() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x0F; AND AL, 0xF0 (using Group 0x80, reg=4)
+    harness.load_program(&[0xB0, 0x0F, 0x80, 0xE0, 0xF0], 0);
+
+    harness.step(); // MOV AL, 0x0F
+    harness.step(); // AND AL, 0xF0 (opcode 0x80, ModR/M 0xE0, imm8 0xF0)
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x00); // AL = 0
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // CF should be clear
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::OF)); // OF should be clear
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF)); // ZF should be set
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::SF)); // SF should be clear
+}
+
+#[test]
+fn test_and_rm16_imm8_memory() {
+    let mut harness = CpuHarness::new();
+    // Write test value to memory
+    harness.mem.write_u16(0x1000, 0xFFFF);
+    // MOV BX, 0x1000; AND word [BX], 0x0F (using Group 0x83, reg=4)
+    harness.load_program(&[0xBB, 0x00, 0x10, 0x83, 0x27, 0x0F], 0);
+
+    harness.step(); // MOV BX, 0x1000
+    harness.step(); // AND word [BX], 0x0F (opcode 0x83, ModR/M 0x27, imm8 0x0F)
+
+    assert_eq!(harness.mem.read_u16(0x1000), 0x000F); // Memory = 0x000F
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // CF should be clear
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::OF)); // OF should be clear
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::ZF)); // ZF should be clear
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::SF)); // SF should be clear
+}
+
 // OR instruction tests
 
 #[test]
