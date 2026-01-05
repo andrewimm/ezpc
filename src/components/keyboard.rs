@@ -146,6 +146,11 @@ impl IoDevice for Keyboard {
                 // Store the scancode for reading
                 self.current_scancode = Some(scancode);
 
+                // If keyboard mode is enabled (bit 5 = 1), latch the scancode immediately
+                if self.port_61_state & 0x20 != 0 {
+                    self.latched_data = scancode;
+                }
+
                 // Raise IRQ1 if not already raised
                 if !self.irq_level {
                     pic.set_irq_level(1, true); // IRQ1 for keyboard
@@ -398,5 +403,28 @@ mod tests {
 
         // Should still have DIP switches (latched_data unchanged)
         assert_eq!(kbd.read_u8(KEYBOARD_DATA_PORT), DIP_SWITCHES);
+    }
+
+    #[test]
+    fn test_keyboard_mode_enabled_before_scancode_arrives() {
+        let queue = Arc::new(RwLock::new(VecDeque::new()));
+        let mut kbd = Keyboard::new(queue.clone());
+        let mut pic = Pic::new(0x08);
+        pic.set_imr(0x00);
+
+        // Enable keyboard mode BEFORE scancode arrives (bit 5 = 1)
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x20);
+
+        // At this point, no scancode available, so still DIP switches
+        assert_eq!(kbd.read_u8(KEYBOARD_DATA_PORT), DIP_SWITCHES);
+
+        // Now add a scancode to the queue
+        queue.write().unwrap().push_back(0x1E);
+
+        // Tick should fetch the scancode AND auto-latch it because bit 5 = 1
+        kbd.tick(1, &mut pic);
+
+        // Should now read the keyboard scancode without needing another write to port 0x61
+        assert_eq!(kbd.read_u8(KEYBOARD_DATA_PORT), 0x1E);
     }
 }
