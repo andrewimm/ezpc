@@ -795,7 +795,10 @@ impl Cpu {
                 // For memory operands, check if this is direct addressing or indirect
                 // Direct addressing: value == 0xFF (sentinel), address in disp field
                 // Indirect addressing: value 0-7 (base_index encoding)
-                if operand.value == 0xFF {
+                // Note: For group instructions, high byte contains reg field, so mask it off
+                let base_index = (operand.value & 0xFF) as u8;
+
+                if base_index == 0xFF {
                     // Direct addressing [disp16]: address is in disp field
                     let segment = if operand.segment != 0xFF {
                         self.read_seg(operand.segment)
@@ -810,7 +813,6 @@ impl Cpu {
                     }
                 } else {
                     // Indirect addressing: calculate EA from base_index
-                    let base_index = operand.value as u8;
                     let (seg_idx, offset) = self.calculate_ea_from_operand(operand, base_index);
 
                     // Use segment override if present, otherwise use default from EA calculation
@@ -860,7 +862,10 @@ impl Cpu {
                 // For memory operands, check if this is direct addressing or indirect
                 // Direct addressing: value == 0xFF (sentinel), address in disp field
                 // Indirect addressing: value 0-7 (base_index encoding)
-                if operand.value == 0xFF {
+                // Note: For group instructions, high byte contains reg field, so mask it off
+                let base_index = (operand.value & 0xFF) as u8;
+
+                if base_index == 0xFF {
                     // Direct addressing [disp16]: address is in disp field
                     let segment = if operand.segment != 0xFF {
                         self.read_seg(operand.segment)
@@ -875,7 +880,6 @@ impl Cpu {
                     }
                 } else {
                     // Indirect addressing: calculate EA from base_index
-                    let base_index = operand.value as u8;
                     let (seg_idx, offset) = self.calculate_ea_from_operand(operand, base_index);
 
                     // Use segment override if present, otherwise use default from EA calculation

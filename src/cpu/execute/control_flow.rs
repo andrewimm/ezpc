@@ -282,13 +282,15 @@ pub fn call_m16_16(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstructio
     // Calculate the effective address
     let (seg_idx, ea) = match instr.dst.op_type {
         OperandType::Mem16 => {
-            // Check if this is direct addressing (value == 0xFF sentinel)
-            if instr.dst.value == 0xFF {
+            // For group_ff instructions, high byte of value contains reg field
+            // Low byte contains base_index (0-7 or 0xFF for direct addressing)
+            let base_index = (instr.dst.value & 0xFF) as u8;
+
+            if base_index == 0xFF {
                 // Direct addressing [disp16]: use DS as default segment
                 (3, instr.dst.disp as u16)
             } else {
                 // Indirect addressing: calculate EA from base_index
-                let base_index = instr.dst.value as u8;
                 cpu.calculate_ea_from_operand(&instr.dst, base_index)
             }
         }
@@ -350,13 +352,15 @@ pub fn jmp_m16_16(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction
     // Calculate the effective address
     let (seg_idx, ea) = match instr.dst.op_type {
         OperandType::Mem16 => {
-            // Check if this is direct addressing (value == 0xFF sentinel)
-            if instr.dst.value == 0xFF {
+            // For group_ff instructions, high byte of value contains reg field
+            // Low byte contains base_index (0-7 or 0xFF for direct addressing)
+            let base_index = (instr.dst.value & 0xFF) as u8;
+
+            if base_index == 0xFF {
                 // Direct addressing [disp16]: use DS as default segment
                 (3, instr.dst.disp as u16)
             } else {
                 // Indirect addressing: calculate EA from base_index
-                let base_index = instr.dst.value as u8;
                 cpu.calculate_ea_from_operand(&instr.dst, base_index)
             }
         }
