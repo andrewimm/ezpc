@@ -647,14 +647,14 @@ pub fn group_80(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) 
     let reg = (instr.dst.value >> 8) as u8; // High byte stores the reg field
 
     match reg {
-        0 => add_rm_imm(cpu, mem, instr), // ADD r/m8, imm8
-        1 => panic!("OR r/m8, imm8 not implemented yet"),
-        2 => adc_rm_imm(cpu, mem, instr), // ADC r/m8, imm8
-        3 => sbb_rm_imm(cpu, mem, instr), // SBB r/m8, imm8
+        0 => add_rm_imm(cpu, mem, instr),               // ADD r/m8, imm8
+        1 => super::logic::or_rm_imm(cpu, mem, instr),  // OR r/m8, imm8
+        2 => adc_rm_imm(cpu, mem, instr),               // ADC r/m8, imm8
+        3 => sbb_rm_imm(cpu, mem, instr),               // SBB r/m8, imm8
         4 => super::logic::and_rm_imm(cpu, mem, instr), // AND r/m8, imm8
-        5 => sub_rm_imm(cpu, mem, instr), // SUB r/m8, imm8
-        6 => panic!("XOR r/m8, imm8 not implemented yet"),
-        7 => cmp_rm_imm(cpu, mem, instr), // CMP r/m8, imm8
+        5 => sub_rm_imm(cpu, mem, instr),               // SUB r/m8, imm8
+        6 => super::logic::xor_rm_imm(cpu, mem, instr), // XOR r/m8, imm8
+        7 => cmp_rm_imm(cpu, mem, instr),               // CMP r/m8, imm8
         _ => unreachable!(),
     }
 }
@@ -665,14 +665,14 @@ pub fn group_81(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) 
     let reg = (instr.dst.value >> 8) as u8;
 
     match reg {
-        0 => add_rm_imm(cpu, mem, instr), // ADD r/m16, imm16
-        1 => panic!("OR r/m16, imm16 not implemented yet"),
-        2 => adc_rm_imm(cpu, mem, instr), // ADC r/m16, imm16
-        3 => sbb_rm_imm(cpu, mem, instr), // SBB r/m16, imm16
+        0 => add_rm_imm(cpu, mem, instr),               // ADD r/m16, imm16
+        1 => super::logic::or_rm_imm(cpu, mem, instr),  // OR r/m16, imm16
+        2 => adc_rm_imm(cpu, mem, instr),               // ADC r/m16, imm16
+        3 => sbb_rm_imm(cpu, mem, instr),               // SBB r/m16, imm16
         4 => super::logic::and_rm_imm(cpu, mem, instr), // AND r/m16, imm16
-        5 => sub_rm_imm(cpu, mem, instr), // SUB r/m16, imm16
-        6 => panic!("XOR r/m16, imm16 not implemented yet"),
-        7 => cmp_rm_imm(cpu, mem, instr), // CMP r/m16, imm16
+        5 => sub_rm_imm(cpu, mem, instr),               // SUB r/m16, imm16
+        6 => super::logic::xor_rm_imm(cpu, mem, instr), // XOR r/m16, imm16
+        7 => cmp_rm_imm(cpu, mem, instr),               // CMP r/m16, imm16
         _ => unreachable!(),
     }
 }
@@ -684,12 +684,12 @@ pub fn group_83(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) 
 
     match reg {
         0 => add_rm_imm(cpu, mem, instr), // ADD r/m16, imm8 (sign-extended)
-        1 => panic!("OR r/m16, imm8 not implemented yet"),
+        1 => super::logic::or_rm_imm(cpu, mem, instr), // OR r/m16, imm8 (sign-extended)
         2 => adc_rm_imm(cpu, mem, instr), // ADC r/m16, imm8 (sign-extended)
         3 => sbb_rm_imm(cpu, mem, instr), // SBB r/m16, imm8 (sign-extended)
         4 => super::logic::and_rm_imm(cpu, mem, instr), // AND r/m16, imm8 (sign-extended)
         5 => sub_rm_imm(cpu, mem, instr), // SUB r/m16, imm8 (sign-extended)
-        6 => panic!("XOR r/m16, imm8 not implemented yet"),
+        6 => super::logic::xor_rm_imm(cpu, mem, instr), // XOR r/m16, imm8 (sign-extended)
         7 => cmp_rm_imm(cpu, mem, instr), // CMP r/m16, imm8 (sign-extended)
         _ => unreachable!(),
     }

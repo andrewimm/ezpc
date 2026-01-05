@@ -168,6 +168,31 @@ pub fn or_acc_imm(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction
     }
 }
 
+/// OR r/m, imm - Logical OR immediate with register/memory
+/// Handles byte (0x80 /1, 0x82 /1) and word (0x81 /1, 0x83 /1) variants
+///
+/// For 0x83, the immediate byte is sign-extended to word size.
+///
+/// Flags affected: CF=0, OF=0, SF, ZF, PF (AF undefined)
+pub fn or_rm_imm(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    let dst_value = cpu.read_operand(mem, &instr.dst);
+    let imm_value = cpu.read_operand(mem, &instr.src);
+
+    let is_byte = instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
+
+    if is_byte {
+        let result = (dst_value as u8) | (imm_value as u8);
+        cpu.write_operand(mem, &instr.dst, result as u16);
+        cpu.clear_of_cf_af();
+        cpu.set_lazy_flags(result as u32, FlagOp::Or8);
+    } else {
+        let result = dst_value | imm_value;
+        cpu.write_operand(mem, &instr.dst, result);
+        cpu.clear_of_cf_af();
+        cpu.set_lazy_flags(result as u32, FlagOp::Or16);
+    }
+}
+
 /// XOR r/m, r - Logical XOR register with register/memory
 /// Handles both byte (0x30) and word (0x31) variants
 ///
@@ -223,6 +248,31 @@ pub fn xor_acc_imm(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstructio
     let imm_value = cpu.read_operand(mem, &instr.src);
 
     let is_byte = instr.dst.op_type == OperandType::Reg8;
+
+    if is_byte {
+        let result = (dst_value as u8) ^ (imm_value as u8);
+        cpu.write_operand(mem, &instr.dst, result as u16);
+        cpu.clear_of_cf_af();
+        cpu.set_lazy_flags(result as u32, FlagOp::Xor8);
+    } else {
+        let result = dst_value ^ imm_value;
+        cpu.write_operand(mem, &instr.dst, result);
+        cpu.clear_of_cf_af();
+        cpu.set_lazy_flags(result as u32, FlagOp::Xor16);
+    }
+}
+
+/// XOR r/m, imm - Logical XOR immediate with register/memory
+/// Handles byte (0x80 /6, 0x82 /6) and word (0x81 /6, 0x83 /6) variants
+///
+/// For 0x83, the immediate byte is sign-extended to word size.
+///
+/// Flags affected: CF=0, OF=0, SF, ZF, PF (AF undefined)
+pub fn xor_rm_imm(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    let dst_value = cpu.read_operand(mem, &instr.dst);
+    let imm_value = cpu.read_operand(mem, &instr.src);
+
+    let is_byte = instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
 
     if is_byte {
         let result = (dst_value as u8) ^ (imm_value as u8);
