@@ -11,7 +11,7 @@ use std::sync::{Arc, RwLock};
 
 /// Keyboard I/O ports
 const KEYBOARD_DATA_PORT: u16 = 0x60;
-const SYSTEM_CONTROL_PORT_B: u16 = 0x62; // Motherboard control/status
+const SYSTEM_CONTROL_PORT_B: u16 = 0x61; // System Control Port B (8255 PPI)
 const KEYBOARD_STATUS_PORT: u16 = 0x64;
 
 /// Status register bits
