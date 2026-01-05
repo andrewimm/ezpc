@@ -88,9 +88,16 @@ impl IoDevice for Keyboard {
                 self.latched_data
             }
             SYSTEM_CONTROL_PORT_B => {
-                // System Control Port B - return last written value
-                // Bit 5 controls whether port 0x60 returns keyboard data (1) or DIP switches (0)
-                self.port_61_state
+                // System Control Port B - motherboard status
+                // Bit 7: Parity check occurred
+                // Bit 6: Channel check occurred
+                // Bit 5: Timer 2 output condition
+                // Bit 4: Toggles with each refresh request
+                // Bit 3: Channel check status
+                // Bit 2: Parity check status
+                // Bit 1: Speaker data status
+                // Bit 0: Timer 2 gate to speaker status
+                0x00
             }
             KEYBOARD_STATUS_PORT => {
                 // Return status register
@@ -325,18 +332,18 @@ mod tests {
     }
 
     #[test]
-    fn test_port_61_read_returns_last_written_value() {
+    fn test_port_61_read_returns_status() {
         let queue = Arc::new(RwLock::new(VecDeque::new()));
         let mut kbd = Keyboard::new(queue);
 
-        // Initially should be 0x00
+        // Port 0x61 reads return status bits, not written values
         assert_eq!(kbd.read_u8(SYSTEM_CONTROL_PORT_B), 0x00);
 
-        // Write a value
+        // Write a value (to control latching behavior)
         kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0xAB);
 
-        // Read should return the same value
-        assert_eq!(kbd.read_u8(SYSTEM_CONTROL_PORT_B), 0xAB);
+        // Read still returns status (0x00), not the written value
+        assert_eq!(kbd.read_u8(SYSTEM_CONTROL_PORT_B), 0x00);
     }
 
     #[test]
