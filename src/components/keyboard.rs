@@ -506,4 +506,201 @@ mod tests {
         // Should now read the keyboard scancode without needing another write to port 0x61
         assert_eq!(kbd.read_u8(KEYBOARD_DATA_PORT), 0x1E);
     }
+
+    #[test]
+    fn test_keyboard_reset_basic() {
+        let queue = Arc::new(RwLock::new(VecDeque::new()));
+        let mut kbd = Keyboard::new(queue);
+        let mut pic = Pic::new(0x08);
+        pic.set_imr(0x00); // Unmask all interrupts
+
+        // Perform keyboard reset sequence
+        // 1. Assert reset (bit 6 = 1)
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x40);
+        assert_eq!(kbd.reset_state, KeyboardResetState::ResetAsserted);
+
+        // 2. Release reset (bit 6 = 0)
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x00);
+        assert_eq!(kbd.reset_state, KeyboardResetState::ResetPending);
+        assert!(kbd.reset_scancode_pending);
+
+        // 3. Tick should inject 0xAA and raise IRQ1
+        kbd.tick(1, &mut pic);
+        assert_eq!(kbd.reset_state, KeyboardResetState::Idle);
+        assert!(!kbd.reset_scancode_pending);
+        assert!(kbd.has_data());
+        assert!(pic.intr_out()); // IRQ1 should be pending
+
+        // 4. Read should return 0xAA
+        assert_eq!(kbd.read_u8(KEYBOARD_DATA_PORT), 0xAA);
+    }
+
+    #[test]
+    fn test_keyboard_reset_clears_pending() {
+        let queue = Arc::new(RwLock::new(VecDeque::new()));
+        let mut kbd = Keyboard::new(queue.clone());
+        let mut pic = Pic::new(0x08);
+        pic.set_imr(0x00);
+
+        // Add a scancode and fetch it
+        queue.write().unwrap().push_back(0x1E);
+        kbd.tick(1, &mut pic);
+        assert_eq!(kbd.current_scancode, Some(0x1E));
+
+        // Assert reset - should clear the pending scancode
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x40);
+        assert_eq!(kbd.current_scancode, None);
+
+        // Release reset
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x00);
+
+        // Tick should send 0xAA, not 0x1E
+        kbd.tick(1, &mut pic);
+        assert_eq!(kbd.read_u8(KEYBOARD_DATA_PORT), 0xAA);
+    }
+
+    #[test]
+    fn test_keyboard_reset_priority_over_queue() {
+        let queue = Arc::new(RwLock::new(VecDeque::new()));
+        let mut kbd = Keyboard::new(queue.clone());
+        let mut pic = Pic::new(0x08);
+        pic.set_imr(0x00);
+
+        // Add multiple scancodes to GUI queue
+        queue.write().unwrap().push_back(0x1E);
+        queue.write().unwrap().push_back(0x30);
+        queue.write().unwrap().push_back(0x2E);
+
+        // Perform reset
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x40);
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x00);
+
+        // First tick should return 0xAA (reset has priority)
+        kbd.tick(1, &mut pic);
+        assert_eq!(kbd.read_u8(KEYBOARD_DATA_PORT), 0xAA);
+
+        // Subsequent ticks should process GUI queue
+        kbd.tick(1, &mut pic);
+        assert_eq!(kbd.read_u8(KEYBOARD_DATA_PORT), 0x1E);
+
+        kbd.tick(1, &mut pic);
+        assert_eq!(kbd.read_u8(KEYBOARD_DATA_PORT), 0x30);
+    }
+
+    #[test]
+    fn test_keyboard_multiple_resets() {
+        let queue = Arc::new(RwLock::new(VecDeque::new()));
+        let mut kbd = Keyboard::new(queue);
+        let mut pic = Pic::new(0x08);
+        pic.set_imr(0x00);
+
+        // Perform 3 consecutive resets
+        for _ in 0..3 {
+            kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x40); // Assert
+            kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x00); // Release
+            kbd.tick(1, &mut pic);
+
+            // Each reset should generate 0xAA
+            assert_eq!(kbd.read_u8(KEYBOARD_DATA_PORT), 0xAA);
+            assert!(pic.intr_out()); // IRQ1 should be raised
+
+            // Acknowledge interrupt
+            let _vector = pic.inta();
+            pic.eoi();
+
+            // Clear scancode for next iteration
+            kbd.tick(1, &mut pic);
+        }
+    }
+
+    #[test]
+    fn test_keyboard_reset_in_dip_mode() {
+        let queue = Arc::new(RwLock::new(VecDeque::new()));
+        let mut kbd = Keyboard::new(queue);
+        let mut pic = Pic::new(0x08);
+        pic.set_imr(0x00);
+
+        // Set to DIP switch mode (bit 7 = 1) and perform reset
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0xC0); // bit 7=1, bit 6=1 (DIP mode + reset)
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x80); // bit 7=1, bit 6=0 (DIP mode, release reset)
+
+        // Tick generates 0xAA but doesn't latch it (still in DIP mode)
+        kbd.tick(1, &mut pic);
+        assert_eq!(kbd.current_scancode, Some(0xAA)); // 0xAA is generated
+        assert_eq!(kbd.read_u8(KEYBOARD_DATA_PORT), DIP_SWITCHES); // But port reads DIP switches
+
+        // Switch to keyboard mode
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x00); // bit 7=0 (keyboard mode)
+
+        // Now should latch the 0xAA
+        assert_eq!(kbd.read_u8(KEYBOARD_DATA_PORT), 0xAA);
+    }
+
+    #[test]
+    fn test_keyboard_reset_only_on_falling_edge() {
+        let queue = Arc::new(RwLock::new(VecDeque::new()));
+        let mut kbd = Keyboard::new(queue);
+        let mut pic = Pic::new(0x08);
+        pic.set_imr(0x00);
+
+        // Write bit 6=1 multiple times (no transition)
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x40);
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x40);
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x40);
+
+        // Should be in ResetAsserted state
+        assert_eq!(kbd.reset_state, KeyboardResetState::ResetAsserted);
+        assert!(!kbd.reset_scancode_pending);
+
+        // Single falling edge (1→0) should trigger reset
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x00);
+        assert_eq!(kbd.reset_state, KeyboardResetState::ResetPending);
+        assert!(kbd.reset_scancode_pending);
+
+        // Tick should generate exactly one 0xAA
+        kbd.tick(1, &mut pic);
+        assert_eq!(kbd.read_u8(KEYBOARD_DATA_PORT), 0xAA);
+
+        // Additional writes with bit 6=0 (no transition) should not generate more 0xAA
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x00);
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x00);
+        kbd.tick(1, &mut pic);
+
+        // No new scancode should be generated
+        assert!(!kbd.has_data());
+    }
+
+    #[test]
+    fn test_keyboard_reset_irq_edge_triggering() {
+        let queue = Arc::new(RwLock::new(VecDeque::new()));
+        let mut kbd = Keyboard::new(queue);
+        let mut pic = Pic::new(0x08);
+        pic.set_imr(0x00);
+
+        // Perform reset
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x40);
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x00);
+
+        // Before tick, IRQ should not be asserted
+        assert!(!pic.intr_out());
+
+        // Tick should lower then raise IRQ (edge trigger)
+        kbd.tick(1, &mut pic);
+
+        // After tick, IRQ should be asserted
+        assert!(pic.intr_out());
+
+        // Verify IRQ1 is the source
+        assert_eq!(pic.inta(), 0x09); // IRQ1 = INT 0x09
+
+        // EOI
+        pic.eoi();
+
+        // Read the scancode
+        assert_eq!(kbd.read_u8(KEYBOARD_DATA_PORT), 0xAA);
+
+        // Next tick should lower IRQ (scancode was consumed)
+        kbd.tick(1, &mut pic);
+        assert!(!pic.intr_out());
+    }
 }
