@@ -25,6 +25,19 @@ const STATUS_OUTPUT_BUFFER_FULL: u8 = 0x01; // Data available to read
 /// Bit 0: Floppy installed (1 = no)
 const DIP_SWITCHES: u8 = 0b00111101; // 0x3D
 
+/// Keyboard reset state machine
+///
+/// Tracks the lifecycle of keyboard reset triggered by port 0x61 bit 6 transitions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KeyboardResetState {
+    /// Normal operation, no reset in progress
+    Idle,
+    /// Reset asserted (bit 6 = 1, keyboard clock disabled)
+    ResetAsserted,
+    /// Reset released (bit 6 transitioned 1→0), 0xAA scancode should be sent next tick
+    ResetPending,
+}
+
 /// IBM PC Keyboard Controller (8255 Peripheral Chip)
 ///
 /// Receives scancodes from a shared queue and raises IRQ1 when data is available.
@@ -44,6 +57,12 @@ pub struct Keyboard {
 
     /// Last value written to port 0x61 (System Control Port B)
     port_61_state: u8,
+
+    /// Current keyboard reset state
+    reset_state: KeyboardResetState,
+
+    /// Flag indicating 0xAA scancode should be injected on next tick
+    reset_scancode_pending: bool,
 }
 
 impl Keyboard {
@@ -58,6 +77,8 @@ impl Keyboard {
             irq_level: false,
             latched_data: DIP_SWITCHES, // Default to DIP switches
             port_61_state: 0x00,
+            reset_state: KeyboardResetState::Idle,
+            reset_scancode_pending: false,
         }
     }
 
