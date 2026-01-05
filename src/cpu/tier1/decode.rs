@@ -781,6 +781,18 @@ impl Cpu {
                     .with_length(1 + 1 + extra_len);
             }
 
+            // AAM - ASCII Adjust AX after Multiply (0xD4)
+            0xD4 => {
+                let base = self.fetch_u8(mem);
+                instr = instr.with_src(Operand::imm8(base)).with_length(2);
+            }
+
+            // AAD - ASCII Adjust AX before Division (0xD5)
+            0xD5 => {
+                let base = self.fetch_u8(mem);
+                instr = instr.with_src(Operand::imm8(base)).with_length(2);
+            }
+
             // Default case for unimplemented/invalid opcodes
             _ => {
                 // No operands, length is just 1

@@ -1989,3 +1989,216 @@ fn test_not_double_inversion() {
     harness.step(); // NOT AL again
     assert_eq!(harness.cpu.read_reg8(0), 0x42); // Back to original value
 }
+
+#[test]
+fn test_aam_basic() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x23; AAM 0x0A
+    // 0x23 = 35 decimal, so 35 / 10 = 3 (AH), 35 % 10 = 5 (AL)
+    harness.load_program(
+        &[
+            0xB0, 0x23, // MOV AL, 0x23 (35 decimal)
+            0xD4, 0x0A, // AAM 0x0A (divide by 10)
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 0x23
+    assert_eq!(harness.cpu.read_reg8(0), 0x23); // AL = 0x23
+
+    harness.step(); // AAM 0x0A
+    assert_eq!(harness.cpu.read_reg8(0), 5); // AL = 5 (35 % 10)
+    assert_eq!(harness.cpu.read_reg8(4), 3); // AH = 3 (35 / 10)
+}
+
+#[test]
+fn test_aam_zero_result() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x00; AAM 0x0A
+    harness.load_program(
+        &[
+            0xB0, 0x00, // MOV AL, 0x00
+            0xD4, 0x0A, // AAM 0x0A
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 0x00
+    harness.step(); // AAM 0x0A
+
+    assert_eq!(harness.cpu.read_reg8(0), 0); // AL = 0
+    assert_eq!(harness.cpu.read_reg8(4), 0); // AH = 0
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF)); // ZF should be set
+}
+
+#[test]
+fn test_aam_max_value() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0xFF; AAM 0x0A
+    // 0xFF = 255 decimal, so 255 / 10 = 25 (AH), 255 % 10 = 5 (AL)
+    harness.load_program(
+        &[
+            0xB0, 0xFF, // MOV AL, 0xFF (255 decimal)
+            0xD4, 0x0A, // AAM 0x0A
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 0xFF
+    harness.step(); // AAM 0x0A
+
+    assert_eq!(harness.cpu.read_reg8(0), 5); // AL = 5 (255 % 10)
+    assert_eq!(harness.cpu.read_reg8(4), 25); // AH = 25 (255 / 10)
+}
+
+#[test]
+fn test_aam_different_base() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x20; AAM 0x10 (divide by 16)
+    // 0x20 = 32 decimal, so 32 / 16 = 2 (AH), 32 % 16 = 0 (AL)
+    harness.load_program(
+        &[
+            0xB0, 0x20, // MOV AL, 0x20 (32 decimal)
+            0xD4, 0x10, // AAM 0x10 (divide by 16)
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 0x20
+    harness.step(); // AAM 0x10
+
+    assert_eq!(harness.cpu.read_reg8(0), 0); // AL = 0 (32 % 16)
+    assert_eq!(harness.cpu.read_reg8(4), 2); // AH = 2 (32 / 16)
+}
+
+#[test]
+fn test_aad_basic() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0x0305; AAD 0x0A
+    // AH=3, AL=5, so result = 3 * 10 + 5 = 35 (0x23) in AL, AH=0
+    harness.load_program(
+        &[
+            0xB8, 0x05, 0x03, // MOV AX, 0x0305 (AH=3, AL=5)
+            0xD5, 0x0A, // AAD 0x0A (multiply by 10)
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AX, 0x0305
+    assert_eq!(harness.cpu.read_reg8(0), 0x05); // AL = 5
+    assert_eq!(harness.cpu.read_reg8(4), 0x03); // AH = 3
+
+    harness.step(); // AAD 0x0A
+    assert_eq!(harness.cpu.read_reg8(0), 35); // AL = 35 (0x23)
+    assert_eq!(harness.cpu.read_reg8(4), 0); // AH = 0
+}
+
+#[test]
+fn test_aad_zero_ah() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0x0009; AAD 0x0A
+    // AH=0, AL=9, so result = 0 * 10 + 9 = 9 in AL, AH=0
+    harness.load_program(
+        &[
+            0xB8, 0x09, 0x00, // MOV AX, 0x0009 (AH=0, AL=9)
+            0xD5, 0x0A, // AAD 0x0A
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AX, 0x0009
+    harness.step(); // AAD 0x0A
+
+    assert_eq!(harness.cpu.read_reg8(0), 9); // AL = 9
+    assert_eq!(harness.cpu.read_reg8(4), 0); // AH = 0
+}
+
+#[test]
+fn test_aad_max_value() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0x0909; AAD 0x0A
+    // AH=9, AL=9, so result = 9 * 10 + 9 = 99 (0x63) in AL, AH=0
+    harness.load_program(
+        &[
+            0xB8, 0x09, 0x09, // MOV AX, 0x0909 (AH=9, AL=9)
+            0xD5, 0x0A, // AAD 0x0A
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AX, 0x0909
+    harness.step(); // AAD 0x0A
+
+    assert_eq!(harness.cpu.read_reg8(0), 99); // AL = 99 (0x63)
+    assert_eq!(harness.cpu.read_reg8(4), 0); // AH = 0
+}
+
+#[test]
+fn test_aad_different_base() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0x0204; AAD 0x10 (base 16)
+    // AH=2, AL=4, so result = 2 * 16 + 4 = 36 (0x24) in AL, AH=0
+    harness.load_program(
+        &[
+            0xB8, 0x04, 0x02, // MOV AX, 0x0204 (AH=2, AL=4)
+            0xD5, 0x10, // AAD 0x10 (multiply by 16)
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AX, 0x0204
+    harness.step(); // AAD 0x10
+
+    assert_eq!(harness.cpu.read_reg8(0), 36); // AL = 36 (0x24)
+    assert_eq!(harness.cpu.read_reg8(4), 0); // AH = 0
+}
+
+#[test]
+fn test_aad_overflow_wrapping() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0x1A14; AAD 0x0A
+    // AH=0x1A (26), AL=0x14 (20), so result = 26 * 10 + 20 = 280
+    // 280 wraps to 24 in u8 (280 % 256 = 24)
+    harness.load_program(
+        &[
+            0xB8, 0x14, 0x1A, // MOV AX, 0x1A14 (AH=26, AL=20)
+            0xD5, 0x0A, // AAD 0x0A
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AX, 0x1A14
+    harness.step(); // AAD 0x0A
+
+    assert_eq!(harness.cpu.read_reg8(0), 24); // AL = 24 (280 % 256)
+    assert_eq!(harness.cpu.read_reg8(4), 0); // AH = 0
+}
+
+#[test]
+fn test_aam_aad_roundtrip() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x3B; AAM 0x0A; AAD 0x0A
+    // This should convert to BCD and back
+    // 0x3B = 59 decimal
+    // After AAM: AH=5, AL=9
+    // After AAD: AL=59, AH=0
+    harness.load_program(
+        &[
+            0xB0, 0x3B, // MOV AL, 0x3B (59 decimal)
+            0xD4, 0x0A, // AAM 0x0A
+            0xD5, 0x0A, // AAD 0x0A
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 0x3B
+    assert_eq!(harness.cpu.read_reg8(0), 0x3B);
+
+    harness.step(); // AAM 0x0A
+    assert_eq!(harness.cpu.read_reg8(4), 5); // AH = 5
+    assert_eq!(harness.cpu.read_reg8(0), 9); // AL = 9
+
+    harness.step(); // AAD 0x0A
+    assert_eq!(harness.cpu.read_reg8(0), 59); // AL = 59
+    assert_eq!(harness.cpu.read_reg8(4), 0); // AH = 0
+}

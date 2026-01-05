@@ -841,6 +841,72 @@ pub fn das(cpu: &mut Cpu, _mem: &mut MemoryBus, _instr: &DecodedInstruction) {
     cpu.set_flags(flags);
 }
 
+/// AAM - ASCII Adjust AX after Multiply
+/// Opcode: 0xD4 imm8
+///
+/// Adjusts AX after multiplying two unpacked BCD digits.
+/// Divides AL by the immediate operand (usually 10) and stores:
+/// - Quotient in AH
+/// - Remainder in AL
+///
+/// Algorithm:
+/// - AH = AL / imm8
+/// - AL = AL % imm8
+///
+/// Flags affected: SF, ZF, PF (CF, AF, OF are undefined)
+pub fn aam(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    // Read the immediate byte (base, usually 0x0A for decimal)
+    let base = cpu.read_operand(mem, &instr.src) as u8;
+
+    // Division by zero causes interrupt 0
+    if base == 0 {
+        panic!("AAM: Division by zero");
+    }
+
+    let al = cpu.read_reg8(0); // Read AL
+
+    // Perform the division
+    let ah = al / base;
+    let al_new = al % base;
+
+    // Write results back to AH and AL
+    cpu.write_reg8(4, ah); // AH
+    cpu.write_reg8(0, al_new); // AL
+
+    // Set flags based on the full AX value
+    let ax = cpu.regs[0];
+    cpu.set_lazy_flags(ax as u32, FlagOp::And16);
+}
+
+/// AAD - ASCII Adjust AX before Division
+/// Opcode: 0xD5 imm8
+///
+/// Adjusts AX before dividing two unpacked BCD digits.
+/// Converts unpacked BCD in AH:AL to binary in AL.
+///
+/// Algorithm:
+/// - AL = AH * imm8 + AL
+/// - AH = 0
+///
+/// Flags affected: SF, ZF, PF (CF, AF, OF are undefined)
+pub fn aad(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    // Read the immediate byte (base, usually 0x0A for decimal)
+    let base = cpu.read_operand(mem, &instr.src) as u8;
+
+    let al = cpu.read_reg8(0); // Read AL
+    let ah = cpu.read_reg8(4); // Read AH
+
+    // Perform the conversion: AL = AH * base + AL
+    let al_new = (ah.wrapping_mul(base)).wrapping_add(al);
+
+    // Write results back
+    cpu.write_reg8(0, al_new); // AL
+    cpu.write_reg8(4, 0); // AH = 0
+
+    // Set flags based on AL value
+    cpu.set_lazy_flags(al_new as u32, FlagOp::And8);
+}
+
 /// Group handler for opcode 0xFE
 /// Handles INC/DEC r/m8 based on reg field
 pub fn group_fe(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {

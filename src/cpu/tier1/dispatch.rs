@@ -236,8 +236,8 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     shift::group_d1, // 0xD1: Shift r/m16, 1 (group: ROL/ROR/RCL/RCR/SHL/SHR/SAR)
     shift::group_d2, // 0xD2: Shift r/m8, CL (group: ROL/ROR/RCL/RCR/SHL/SHR/SAR)
     shift::group_d3, // 0xD3: Shift r/m16, CL (group: ROL/ROR/RCL/RCR/SHL/SHR/SAR)
-    invalid_opcode,  // 0xD4: AAM (not implemented yet)
-    invalid_opcode,  // 0xD5: AAD (not implemented yet)
+    arithmetic::aam, // 0xD4: AAM imm8
+    arithmetic::aad, // 0xD5: AAD imm8
     invalid_opcode,  // 0xD6: SALC (undocumented, not implemented)
     invalid_opcode,  // 0xD7: XLAT (not implemented yet)
     invalid_opcode,  // 0xD8: ESC (FPU, not implemented)
