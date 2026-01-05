@@ -703,3 +703,105 @@ fn test_segment_override_word_operations() {
         "16-bit read should use ES override"
     );
 }
+
+#[test]
+fn test_mov_al_moffs() {
+    let mut harness = CpuHarness::new();
+    // Set up memory at address 0x1234 with a test value
+    harness.mem.write_u8(0x1234, 0xAB);
+
+    // MOV AL, [0x1234] - opcode 0xA0 followed by 16-bit offset
+    harness.load_program(&[0xA0, 0x34, 0x12], 0);
+
+    harness.step();
+    assert_eq!(harness.cpu.read_reg8(0), 0xAB, "AL should be 0xAB"); // AL
+    assert_eq!(harness.cpu.ip, 3, "IP should advance by 3");
+}
+
+#[test]
+fn test_mov_ax_moffs() {
+    let mut harness = CpuHarness::new();
+    // Set up memory at address 0x5678 with a test value
+    harness.mem.write_u16(0x5678, 0xCDEF);
+
+    // MOV AX, [0x5678] - opcode 0xA1 followed by 16-bit offset
+    harness.load_program(&[0xA1, 0x78, 0x56], 0);
+
+    harness.step();
+    assert_eq!(harness.cpu.regs[0], 0xCDEF, "AX should be 0xCDEF"); // AX
+    assert_eq!(harness.cpu.ip, 3, "IP should advance by 3");
+}
+
+#[test]
+fn test_mov_moffs_al() {
+    let mut harness = CpuHarness::new();
+    // Set AL to a test value
+    harness.cpu.write_reg8(0, 0x42); // AL = 0x42
+
+    // MOV [0x2000], AL - opcode 0xA2 followed by 16-bit offset
+    harness.load_program(&[0xA2, 0x00, 0x20], 0);
+
+    harness.step();
+    assert_eq!(
+        harness.mem.read_u8(0x2000),
+        0x42,
+        "Memory at 0x2000 should be 0x42"
+    );
+    assert_eq!(harness.cpu.ip, 3, "IP should advance by 3");
+}
+
+#[test]
+fn test_mov_moffs_ax() {
+    let mut harness = CpuHarness::new();
+    // Set AX to a test value
+    harness.cpu.regs[0] = 0x9876; // AX = 0x9876
+
+    // MOV [0x3000], AX - opcode 0xA3 followed by 16-bit offset
+    harness.load_program(&[0xA3, 0x00, 0x30], 0);
+
+    harness.step();
+    assert_eq!(
+        harness.mem.read_u16(0x3000),
+        0x9876,
+        "Memory at 0x3000 should be 0x9876"
+    );
+    assert_eq!(harness.cpu.ip, 3, "IP should advance by 3");
+}
+
+#[test]
+fn test_mov_moffs_with_segment_override() {
+    let mut harness = CpuHarness::new();
+
+    // Set up segments
+    // ES=0x0100 -> physical base 0x01000
+    // DS=0x0200 -> physical base 0x02000
+    harness.cpu.segments[0] = 0x0100; // ES
+    harness.cpu.segments[3] = 0x0200; // DS
+
+    // Test 1: MOV AL, [0x0050] without override (should use DS)
+    harness.mem.write_u8(0x02050, 0xAA); // DS:0x0050 -> physical 0x02050
+    harness.load_program(&[0xA0, 0x50, 0x00], 0); // MOV AL, [0x0050]
+    harness.step();
+    assert_eq!(harness.cpu.read_reg8(0), 0xAA, "Should read from DS:0x0050");
+
+    // Test 2: ES: MOV AL, [0x0050] (should use ES)
+    harness.mem.write_u8(0x01050, 0xBB); // ES:0x0050 -> physical 0x01050
+    harness.load_program(&[0x26, 0xA0, 0x50, 0x00], 0); // ES: MOV AL, [0x0050]
+    harness.step();
+    assert_eq!(harness.cpu.read_reg8(0), 0xBB, "Should read from ES:0x0050");
+
+    // Test 3: ES: MOV [0x0060], AX (write with segment override)
+    harness.cpu.regs[0] = 0x1234; // AX = 0x1234
+    harness.load_program(&[0x26, 0xA3, 0x60, 0x00], 0); // ES: MOV [0x0060], AX
+    harness.step();
+    assert_eq!(
+        harness.mem.read_u16(0x01060),
+        0x1234,
+        "Should write to ES:0x0060"
+    );
+    assert_eq!(
+        harness.mem.read_u16(0x02060),
+        0x0000,
+        "Should not write to DS:0x0060"
+    );
+}

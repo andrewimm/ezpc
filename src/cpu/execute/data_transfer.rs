@@ -132,3 +132,51 @@ pub fn mov_sreg_rm(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstructio
     let src_value = cpu.read_operand(mem, &instr.src);
     cpu.write_operand(mem, &instr.dst, src_value);
 }
+
+/// MOV AL, moffs8 - Move byte at memory offset to AL
+/// Opcode: 0xA0
+///
+/// Loads a byte from the memory location specified by a 16-bit offset into AL.
+/// The offset is encoded directly in the instruction (no ModR/M byte).
+/// The segment can be overridden with a segment prefix.
+/// No flags are affected.
+pub fn mov_al_moffs(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    let src_value = cpu.read_operand(mem, &instr.src);
+    cpu.write_reg8(0, src_value as u8); // AL
+}
+
+/// MOV AX, moffs16 - Move word at memory offset to AX
+/// Opcode: 0xA1
+///
+/// Loads a word from the memory location specified by a 16-bit offset into AX.
+/// The offset is encoded directly in the instruction (no ModR/M byte).
+/// The segment can be overridden with a segment prefix.
+/// No flags are affected.
+pub fn mov_ax_moffs(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    let src_value = cpu.read_operand(mem, &instr.src);
+    cpu.write_reg16(0, src_value); // AX
+}
+
+/// MOV moffs8, AL - Move AL to byte at memory offset
+/// Opcode: 0xA2
+///
+/// Stores the byte in AL to the memory location specified by a 16-bit offset.
+/// The offset is encoded directly in the instruction (no ModR/M byte).
+/// The segment can be overridden with a segment prefix.
+/// No flags are affected.
+pub fn mov_moffs_al(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    let al_value = cpu.read_reg8(0); // AL
+    cpu.write_operand(mem, &instr.dst, al_value as u16);
+}
+
+/// MOV moffs16, AX - Move AX to word at memory offset
+/// Opcode: 0xA3
+///
+/// Stores the word in AX to the memory location specified by a 16-bit offset.
+/// The offset is encoded directly in the instruction (no ModR/M byte).
+/// The segment can be overridden with a segment prefix.
+/// No flags are affected.
+pub fn mov_moffs_ax(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    let ax_value = cpu.read_reg16(0); // AX
+    cpu.write_operand(mem, &instr.dst, ax_value);
+}

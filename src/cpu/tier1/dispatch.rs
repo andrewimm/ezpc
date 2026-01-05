@@ -181,22 +181,22 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     flags::sahf,                // 0x9E: SAHF - Store AH into Flags
     flags::lahf,                // 0x9F: LAHF - Load AH from Flags
     // 0xA0-0xAF: MOV, string operations
-    invalid_opcode,      // 0xA0: MOV AL, moffs8 (not implemented yet)
-    invalid_opcode,      // 0xA1: MOV AX, moffs16 (not implemented yet)
-    invalid_opcode,      // 0xA2: MOV moffs8, AL (not implemented yet)
-    invalid_opcode,      // 0xA3: MOV moffs16, AX (not implemented yet)
-    string::movsb,       // 0xA4: MOVSB - Move byte from DS:SI to ES:DI
-    string::movsw,       // 0xA5: MOVSW - Move word from DS:SI to ES:DI
-    string::cmpsb,       // 0xA6: CMPSB - Compare bytes at DS:SI and ES:DI
-    string::cmpsw,       // 0xA7: CMPSW - Compare words at DS:SI and ES:DI
-    logic::test_acc_imm, // 0xA8: TEST AL, imm8
-    logic::test_acc_imm, // 0xA9: TEST AX, imm16
-    string::stosb,       // 0xAA: STOSB - Store AL to ES:DI
-    string::stosw,       // 0xAB: STOSW - Store AX to ES:DI
-    string::lodsb,       // 0xAC: LODSB - Load DS:SI into AL
-    string::lodsw,       // 0xAD: LODSW - Load DS:SI into AX
-    string::scasb,       // 0xAE: SCASB - Scan byte: compare AL with ES:DI
-    string::scasw,       // 0xAF: SCASW - Scan word: compare AX with ES:DI
+    data_transfer::mov_al_moffs, // 0xA0: MOV AL, moffs8
+    data_transfer::mov_ax_moffs, // 0xA1: MOV AX, moffs16
+    data_transfer::mov_moffs_al, // 0xA2: MOV moffs8, AL
+    data_transfer::mov_moffs_ax, // 0xA3: MOV moffs16, AX
+    string::movsb,               // 0xA4: MOVSB - Move byte from DS:SI to ES:DI
+    string::movsw,               // 0xA5: MOVSW - Move word from DS:SI to ES:DI
+    string::cmpsb,               // 0xA6: CMPSB - Compare bytes at DS:SI and ES:DI
+    string::cmpsw,               // 0xA7: CMPSW - Compare words at DS:SI and ES:DI
+    logic::test_acc_imm,         // 0xA8: TEST AL, imm8
+    logic::test_acc_imm,         // 0xA9: TEST AX, imm16
+    string::stosb,               // 0xAA: STOSB - Store AL to ES:DI
+    string::stosw,               // 0xAB: STOSW - Store AX to ES:DI
+    string::lodsb,               // 0xAC: LODSB - Load DS:SI into AL
+    string::lodsw,               // 0xAD: LODSW - Load DS:SI into AX
+    string::scasb,               // 0xAE: SCASB - Scan byte: compare AL with ES:DI
+    string::scasw,               // 0xAF: SCASW - Scan word: compare AX with ES:DI
     // 0xB0-0xBF: MOV immediate to register
     data_transfer::mov_r_imm, // 0xB0: MOV AL, imm8
     data_transfer::mov_r_imm, // 0xB1: MOV CL, imm8

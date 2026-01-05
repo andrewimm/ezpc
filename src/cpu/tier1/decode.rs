@@ -133,6 +133,54 @@ impl Cpu {
                 instr = instr.with_length(1);
             }
 
+            // MOV AL, moffs8 (0xA0) - Move byte at [offset] to AL
+            0xA0 => {
+                let offset = self.fetch_u16(mem);
+                // Use sentinel value 0xFF for direct addressing
+                let mut src = Operand::mem8_disp(0xFF, offset as i16);
+                // Apply segment override if present
+                if let Some(seg) = self.segment_override {
+                    src.segment = seg;
+                }
+                instr = instr.with_src(src).with_length(3);
+            }
+
+            // MOV AX, moffs16 (0xA1) - Move word at [offset] to AX
+            0xA1 => {
+                let offset = self.fetch_u16(mem);
+                // Use sentinel value 0xFF for direct addressing
+                let mut src = Operand::mem16_disp(0xFF, offset as i16);
+                // Apply segment override if present
+                if let Some(seg) = self.segment_override {
+                    src.segment = seg;
+                }
+                instr = instr.with_src(src).with_length(3);
+            }
+
+            // MOV moffs8, AL (0xA2) - Move AL to byte at [offset]
+            0xA2 => {
+                let offset = self.fetch_u16(mem);
+                // Use sentinel value 0xFF for direct addressing
+                let mut dst = Operand::mem8_disp(0xFF, offset as i16);
+                // Apply segment override if present
+                if let Some(seg) = self.segment_override {
+                    dst.segment = seg;
+                }
+                instr = instr.with_dst(dst).with_length(3);
+            }
+
+            // MOV moffs16, AX (0xA3) - Move AX to word at [offset]
+            0xA3 => {
+                let offset = self.fetch_u16(mem);
+                // Use sentinel value 0xFF for direct addressing
+                let mut dst = Operand::mem16_disp(0xFF, offset as i16);
+                // Apply segment override if present
+                if let Some(seg) = self.segment_override {
+                    dst.segment = seg;
+                }
+                instr = instr.with_dst(dst).with_length(3);
+            }
+
             // PUSH r16 (0x50-0x57)
             0x50..=0x57 => {
                 let reg = opcode & 0x07;
