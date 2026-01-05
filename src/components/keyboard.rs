@@ -11,6 +11,7 @@ use std::sync::{Arc, RwLock};
 
 /// Keyboard I/O ports
 const KEYBOARD_DATA_PORT: u16 = 0x60;
+const SYSTEM_CONTROL_PORT_B: u16 = 0x62; // Motherboard control/status
 const KEYBOARD_STATUS_PORT: u16 = 0x64;
 
 /// Status register bits
@@ -72,6 +73,20 @@ impl IoDevice for Keyboard {
                 } else {
                     0xFF // No data available
                 }
+            }
+            SYSTEM_CONTROL_PORT_B => {
+                // System Control Port B - motherboard status
+                // Bit 7: Parity check enable
+                // Bit 6: I/O channel check enable
+                // Bit 5: Timer 2 output
+                // Bit 4: Toggles with each refresh request
+                // Bit 3: I/O channel parity check occurred
+                // Bit 2: Memory parity check occurred
+                // Bit 1: Speaker data
+                // Bit 0: Timer 2 gate to speaker
+                //
+                // Return 0 to indicate no parity errors and all control bits off
+                0x00
             }
             KEYBOARD_STATUS_PORT => {
                 // Return status register
@@ -234,5 +249,14 @@ mod tests {
         // Second tick gets second scancode
         kbd.tick(1, &mut pic);
         assert_eq!(kbd.read_u8(KEYBOARD_DATA_PORT), 0x9E);
+    }
+
+    #[test]
+    fn test_system_control_port_b_no_parity_errors() {
+        let queue = Arc::new(RwLock::new(VecDeque::new()));
+        let mut kbd = Keyboard::new(queue);
+        // Port 0x62 bits 7-6 should always be 0 (parity checking disabled)
+        let value = kbd.read_u8(SYSTEM_CONTROL_PORT_B);
+        assert_eq!(value & 0xC0, 0x00);
     }
 }
