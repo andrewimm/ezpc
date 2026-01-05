@@ -841,6 +841,84 @@ pub fn das(cpu: &mut Cpu, _mem: &mut MemoryBus, _instr: &DecodedInstruction) {
     cpu.set_flags(flags);
 }
 
+/// AAA - ASCII Adjust After Addition
+/// Opcode: 0x37
+///
+/// Adjusts AL after adding two unpacked BCD digits.
+/// If the low nibble of AL is greater than 9 or AF is set:
+/// - AL = AL + 6
+/// - AH = AH + 1
+/// - AF = 1, CF = 1
+/// Then AL is masked to keep only the low nibble (AL &= 0x0F)
+///
+/// Flags affected: AF, CF (SF, ZF, PF, OF are undefined)
+pub fn aaa(cpu: &mut Cpu, _mem: &mut MemoryBus, _instr: &DecodedInstruction) {
+    let mut al = cpu.read_reg8(0); // Read AL
+    let mut ah = cpu.read_reg8(4); // Read AH
+    let old_af = cpu.get_flag(Cpu::AF);
+
+    // Check if adjustment is needed
+    if (al & 0x0F) > 9 || old_af {
+        // Adjust AL and AH
+        al = al.wrapping_add(6);
+        ah = ah.wrapping_add(1);
+
+        // Set AF and CF
+        cpu.set_flag(Cpu::AF, true);
+        cpu.set_flag(Cpu::CF, true);
+    } else {
+        // Clear AF and CF
+        cpu.set_flag(Cpu::AF, false);
+        cpu.set_flag(Cpu::CF, false);
+    }
+
+    // Mask AL to keep only low nibble
+    al &= 0x0F;
+
+    // Write results back
+    cpu.write_reg8(0, al); // AL
+    cpu.write_reg8(4, ah); // AH
+}
+
+/// AAS - ASCII Adjust After Subtraction
+/// Opcode: 0x3F
+///
+/// Adjusts AL after subtracting two unpacked BCD digits.
+/// If the low nibble of AL is greater than 9 or AF is set:
+/// - AL = AL - 6
+/// - AH = AH - 1
+/// - AF = 1, CF = 1
+/// Then AL is masked to keep only the low nibble (AL &= 0x0F)
+///
+/// Flags affected: AF, CF (SF, ZF, PF, OF are undefined)
+pub fn aas(cpu: &mut Cpu, _mem: &mut MemoryBus, _instr: &DecodedInstruction) {
+    let mut al = cpu.read_reg8(0); // Read AL
+    let mut ah = cpu.read_reg8(4); // Read AH
+    let old_af = cpu.get_flag(Cpu::AF);
+
+    // Check if adjustment is needed
+    if (al & 0x0F) > 9 || old_af {
+        // Adjust AL and AH
+        al = al.wrapping_sub(6);
+        ah = ah.wrapping_sub(1);
+
+        // Set AF and CF
+        cpu.set_flag(Cpu::AF, true);
+        cpu.set_flag(Cpu::CF, true);
+    } else {
+        // Clear AF and CF
+        cpu.set_flag(Cpu::AF, false);
+        cpu.set_flag(Cpu::CF, false);
+    }
+
+    // Mask AL to keep only low nibble
+    al &= 0x0F;
+
+    // Write results back
+    cpu.write_reg8(0, al); // AL
+    cpu.write_reg8(4, ah); // AH
+}
+
 /// AAM - ASCII Adjust AX after Multiply
 /// Opcode: 0xD4 imm8
 ///

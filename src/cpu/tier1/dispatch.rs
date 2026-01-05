@@ -69,7 +69,7 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     logic::xor_acc_imm,      // 0x34: XOR AL, imm8
     logic::xor_acc_imm,      // 0x35: XOR AX, imm16
     prefix::seg_ss,          // 0x36: SS segment override prefix
-    invalid_opcode,          // 0x37: AAA (not implemented yet)
+    arithmetic::aaa,         // 0x37: AAA
     arithmetic::cmp_rm_r,    // 0x38: CMP r/m8, r8
     arithmetic::cmp_rm_r,    // 0x39: CMP r/m16, r16
     arithmetic::cmp_r_rm,    // 0x3A: CMP r8, r/m8
@@ -77,7 +77,7 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     arithmetic::cmp_acc_imm, // 0x3C: CMP AL, imm8
     arithmetic::cmp_acc_imm, // 0x3D: CMP AX, imm16
     prefix::seg_ds,          // 0x3E: DS segment override prefix
-    invalid_opcode,          // 0x3F: AAS (not implemented yet)
+    arithmetic::aas,         // 0x3F: AAS
     // 0x40-0x4F: INC and DEC 16-bit registers
     arithmetic::inc_r16, // 0x40: INC AX
     arithmetic::inc_r16, // 0x41: INC CX

@@ -133,6 +133,16 @@ impl Cpu {
                 instr = instr.with_length(1);
             }
 
+            // AAA, AAS (0x37, 0x3F) - ASCII adjust after addition/subtraction
+            0x37 | 0x3F => {
+                instr = instr.with_length(1);
+            }
+
+            // DAA, DAS (0x27, 0x2F) - Decimal adjust after addition/subtraction
+            0x27 | 0x2F => {
+                instr = instr.with_length(1);
+            }
+
             // MOV AL, moffs8 (0xA0) - Move byte at [offset] to AL
             0xA0 => {
                 let offset = self.fetch_u16(mem);

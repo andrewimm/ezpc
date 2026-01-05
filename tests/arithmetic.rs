@@ -2202,3 +2202,232 @@ fn test_aam_aad_roundtrip() {
     assert_eq!(harness.cpu.read_reg8(0), 59); // AL = 59
     assert_eq!(harness.cpu.read_reg8(4), 0); // AH = 0
 }
+
+#[test]
+fn test_aaa_no_adjustment() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0x0005; AAA
+    // AL = 0x05, low nibble is 5 (not > 9), AF is clear
+    // No adjustment needed, AL = 0x05 & 0x0F = 0x05
+    harness.load_program(
+        &[
+            0xB8, 0x05, 0x00, // MOV AX, 0x0005
+            0x37, // AAA
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AX, 0x0005
+    harness.step(); // AAA
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x05); // AL = 0x05
+    assert_eq!(harness.cpu.read_reg8(4), 0x00); // AH = 0x00
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::AF)); // AF should be clear
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // CF should be clear
+}
+
+#[test]
+fn test_aaa_adjustment_needed() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0x000C; AAA
+    // AL = 0x0C, low nibble is 12 (> 9)
+    // Adjustment: AL = 0x0C + 6 = 0x12, AH = 0x00 + 1 = 0x01
+    // Then AL &= 0x0F = 0x02
+    harness.load_program(
+        &[
+            0xB8, 0x0C, 0x00, // MOV AX, 0x000C
+            0x37, // AAA
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AX, 0x000C
+    harness.step(); // AAA
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x02); // AL = 0x02 (0x12 & 0x0F)
+    assert_eq!(harness.cpu.read_reg8(4), 0x01); // AH = 0x01
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::AF)); // AF should be set
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // CF should be set
+}
+
+#[test]
+fn test_aaa_with_af_set() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0x0003; STC (to set CF, which won't affect AAA)
+    // Actually, we need to set AF. Let me use ADD to set AF.
+    // ADD AL, 0x0F will set AF (0x03 + 0x0F = 0x12, AF set due to low nibble carry)
+    // Then AAA should adjust even though low nibble is only 2
+    harness.load_program(
+        &[
+            0xB0, 0x03, // MOV AL, 0x03
+            0x04, 0x0F, // ADD AL, 0x0F (result 0x12, sets AF)
+            0x37, // AAA
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 0x03
+    harness.step(); // ADD AL, 0x0F
+                    // AL should be 0x12, AF should be set
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::AF)); // AF should be set
+
+    harness.step(); // AAA
+                    // Because AF was set, AAA adjusts: AL = 0x12 + 6 = 0x18, AH = 0 + 1 = 1
+                    // Then AL &= 0x0F = 0x08
+    assert_eq!(harness.cpu.read_reg8(0), 0x08); // AL = 0x08
+    assert_eq!(harness.cpu.read_reg8(4), 0x01); // AH = 0x01
+}
+
+#[test]
+fn test_aaa_bcd_addition() {
+    let mut harness = CpuHarness::new();
+    // Add two unpacked BCD digits: 7 + 5 = 12 (0x0C in hex)
+    // MOV AL, 0x07; ADD AL, 0x05; AAA
+    // After ADD: AL = 0x0C
+    // After AAA: AL = 0x02, AH = 0x01 (representing BCD 12)
+    harness.load_program(
+        &[
+            0xB0, 0x07, // MOV AL, 0x07
+            0x04, 0x05, // ADD AL, 0x05
+            0x37, // AAA
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 0x07
+    harness.step(); // ADD AL, 0x05
+    assert_eq!(harness.cpu.read_reg8(0), 0x0C); // AL = 0x0C
+
+    harness.step(); // AAA
+    assert_eq!(harness.cpu.read_reg8(0), 0x02); // AL = 0x02
+    assert_eq!(harness.cpu.read_reg8(4), 0x01); // AH = 0x01 (carry to next digit)
+}
+
+#[test]
+fn test_aas_no_adjustment() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0x0005; AAS
+    // AL = 0x05, low nibble is 5 (not > 9), AF is clear
+    // No adjustment needed, AL = 0x05 & 0x0F = 0x05
+    harness.load_program(
+        &[
+            0xB8, 0x05, 0x00, // MOV AX, 0x0005
+            0x3F, // AAS
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AX, 0x0005
+    harness.step(); // AAS
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x05); // AL = 0x05
+    assert_eq!(harness.cpu.read_reg8(4), 0x00); // AH = 0x00
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::AF)); // AF should be clear
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // CF should be clear
+}
+
+#[test]
+fn test_aas_adjustment_needed() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0x050C; AAS
+    // AL = 0x0C, low nibble is 12 (> 9)
+    // Adjustment: AL = 0x0C - 6 = 0x06, AH = 0x05 - 1 = 0x04
+    // Then AL &= 0x0F = 0x06
+    harness.load_program(
+        &[
+            0xB8, 0x0C, 0x05, // MOV AX, 0x050C
+            0x3F, // AAS
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AX, 0x050C
+    harness.step(); // AAS
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x06); // AL = 0x06 (0x06 & 0x0F)
+    assert_eq!(harness.cpu.read_reg8(4), 0x04); // AH = 0x04
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::AF)); // AF should be set
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // CF should be set
+}
+
+#[test]
+fn test_aas_with_af_set() {
+    let mut harness = CpuHarness::new();
+    // Subtract to set AF, then use AAS
+    // SUB AL, 0x05 from AL=0x03 will set AF (borrow from low nibble)
+    harness.load_program(
+        &[
+            0xB8, 0x03, 0x05, // MOV AX, 0x0503
+            0x2C, 0x05, // SUB AL, 0x05 (result 0xFE, sets AF)
+            0x3F, // AAS
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AX, 0x0503
+    harness.step(); // SUB AL, 0x05
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::AF)); // AF should be set
+
+    harness.step(); // AAS
+                    // Because AF was set, AAS adjusts: AL = 0xFE - 6 = 0xF8, AH = 0x05 - 1 = 0x04
+                    // Then AL &= 0x0F = 0x08
+    assert_eq!(harness.cpu.read_reg8(0), 0x08); // AL = 0x08
+    assert_eq!(harness.cpu.read_reg8(4), 0x04); // AH = 0x04
+}
+
+#[test]
+fn test_aas_bcd_subtraction() {
+    let mut harness = CpuHarness::new();
+    // Subtract two unpacked BCD digits: 3 - 5 (requires borrow)
+    // MOV AL, 0x03; SUB AL, 0x05; AAS
+    // After SUB: AL = 0xFE (wraps around, AF set)
+    // After AAS: AL = 0x08, AH decremented (borrow)
+    harness.load_program(
+        &[
+            0xB8, 0x03, 0x02, // MOV AX, 0x0203
+            0x2C, 0x05, // SUB AL, 0x05
+            0x3F, // AAS
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AX, 0x0203
+    harness.step(); // SUB AL, 0x05
+                    // AL = 0xFE, AF set
+
+    harness.step(); // AAS
+    assert_eq!(harness.cpu.read_reg8(0), 0x08); // AL = 0x08 (BCD 8)
+    assert_eq!(harness.cpu.read_reg8(4), 0x01); // AH = 0x01 (borrowed from AH)
+}
+
+#[test]
+fn test_aaa_aas_roundtrip() {
+    let mut harness = CpuHarness::new();
+    // Add 7 + 6 = 13, then subtract 6 to get back to 7
+    harness.load_program(
+        &[
+            0xB0, 0x07, // MOV AL, 0x07
+            0x04, 0x06, // ADD AL, 0x06 (result 0x0D)
+            0x37, // AAA (result: AL=0x03, AH=0x01)
+            0xB4, 0x00, // MOV AH, 0x00 (clear AH for next operation)
+            0x2C, 0x06, // SUB AL, 0x06 (0x03 - 0x06 = 0xFD, sets AF)
+            0x3F, // AAS
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 0x07
+    harness.step(); // ADD AL, 0x06
+    harness.step(); // AAA
+    assert_eq!(harness.cpu.read_reg8(0), 0x03); // AL = 0x03
+    assert_eq!(harness.cpu.read_reg8(4), 0x01); // AH = 0x01
+
+    harness.step(); // MOV AH, 0x00
+    assert_eq!(harness.cpu.read_reg8(4), 0x00); // AH = 0x00
+
+    harness.step(); // SUB AL, 0x06
+    harness.step(); // AAS
+    assert_eq!(harness.cpu.read_reg8(0), 0x07); // AL = 0x07 (back to original)
+                                                // AH will be 0xFF due to borrow
+    assert_eq!(harness.cpu.read_reg8(4), 0xFF); // AH = 0xFF
+}
