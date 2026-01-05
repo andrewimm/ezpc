@@ -112,16 +112,16 @@ impl IoDevice for Keyboard {
             SYSTEM_CONTROL_PORT_B => {
                 self.port_61_state = value;
 
-                // Bit 5 selects keyboard data (1) or DIP switches (0)
-                if value & 0x20 != 0 {
+                // Bit 7 selects DIP switches (1) or keyboard data (0)
+                if value & 0x80 != 0 {
+                    // Latch DIP switches
+                    self.latched_data = DIP_SWITCHES;
+                } else {
                     // Latch keyboard scancode if available
                     if let Some(scancode) = self.current_scancode.take() {
                         self.latched_data = scancode;
                     }
                     // If no scancode available, latched_data remains unchanged
-                } else {
-                    // Latch DIP switches
-                    self.latched_data = DIP_SWITCHES;
                 }
             }
             KEYBOARD_STATUS_PORT => {
@@ -146,8 +146,8 @@ impl IoDevice for Keyboard {
                 // Store the scancode for reading
                 self.current_scancode = Some(scancode);
 
-                // If keyboard mode is enabled (bit 5 = 1), latch the scancode immediately
-                if self.port_61_state & 0x20 != 0 {
+                // If keyboard mode is enabled (bit 7 = 0), latch the scancode immediately
+                if self.port_61_state & 0x80 == 0 {
                     self.latched_data = scancode;
                 }
 
@@ -230,8 +230,8 @@ mod tests {
         queue.write().unwrap().push_back(0x1E);
         kbd.tick(1, &mut pic);
 
-        // Latch keyboard data by writing to port 0x61 with bit 5 = 1
-        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x20);
+        // Latch keyboard data by writing to port 0x61 with bit 7 = 0
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x00);
 
         // Read the scancode
         let scancode = kbd.read_u8(KEYBOARD_DATA_PORT);
@@ -278,7 +278,7 @@ mod tests {
 
         // First tick gets first scancode
         kbd.tick(1, &mut pic);
-        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x20); // Latch keyboard data
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x00); // Latch keyboard data (bit 7 = 0)
         assert_eq!(kbd.read_u8(KEYBOARD_DATA_PORT), 0x1E);
 
         // Lower IRQ after read
@@ -286,7 +286,7 @@ mod tests {
 
         // Second tick gets second scancode
         kbd.tick(1, &mut pic);
-        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x20); // Latch keyboard data
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x00); // Latch keyboard data (bit 7 = 0)
         assert_eq!(kbd.read_u8(KEYBOARD_DATA_PORT), 0x9E);
     }
 
@@ -308,19 +308,19 @@ mod tests {
     }
 
     #[test]
-    fn test_port_61_write_bit5_low_latches_dip_switches() {
+    fn test_port_61_write_bit7_high_latches_dip_switches() {
         let queue = Arc::new(RwLock::new(VecDeque::new()));
         let mut kbd = Keyboard::new(queue);
 
-        // Write to port 0x61 with bit 5 = 0 (latch DIP switches)
-        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x00);
+        // Write to port 0x61 with bit 7 = 1 (latch DIP switches)
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x80);
 
         // Port 0x60 should return DIP switches
         assert_eq!(kbd.read_u8(KEYBOARD_DATA_PORT), DIP_SWITCHES);
     }
 
     #[test]
-    fn test_port_61_write_bit5_high_latches_keyboard_data() {
+    fn test_port_61_write_bit7_low_latches_keyboard_data() {
         let queue = Arc::new(RwLock::new(VecDeque::new()));
         let mut kbd = Keyboard::new(queue.clone());
         let mut pic = Pic::new(0x08);
@@ -329,8 +329,8 @@ mod tests {
         queue.write().unwrap().push_back(0x1E); // 'A' key
         kbd.tick(1, &mut pic);
 
-        // Write to port 0x61 with bit 5 = 1 (latch keyboard data)
-        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x20);
+        // Write to port 0x61 with bit 7 = 0 (latch keyboard data)
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x00);
 
         // Port 0x60 should now return the keyboard scancode
         assert_eq!(kbd.read_u8(KEYBOARD_DATA_PORT), 0x1E);
@@ -360,7 +360,7 @@ mod tests {
         // Add scancode and latch it
         queue.write().unwrap().push_back(0x1E);
         kbd.tick(1, &mut pic);
-        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x20); // Latch keyboard data
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x00); // Latch keyboard data (bit 7 = 0)
 
         // Multiple reads should return the same latched value
         assert_eq!(kbd.read_u8(KEYBOARD_DATA_PORT), 0x1E);
@@ -378,12 +378,12 @@ mod tests {
         queue.write().unwrap().push_back(0x9E);
         kbd.tick(1, &mut pic);
 
-        // Latch keyboard data (bit 5 = 1)
-        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x20);
+        // Latch keyboard data (bit 7 = 0)
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x00);
         assert_eq!(kbd.read_u8(KEYBOARD_DATA_PORT), 0x9E);
 
-        // Switch to DIP switches (bit 5 = 0)
-        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x00);
+        // Switch to DIP switches (bit 7 = 1)
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x80);
         assert_eq!(kbd.read_u8(KEYBOARD_DATA_PORT), DIP_SWITCHES);
 
         // Should still be DIP switches on subsequent reads
@@ -395,13 +395,14 @@ mod tests {
         let queue = Arc::new(RwLock::new(VecDeque::new()));
         let mut kbd = Keyboard::new(queue);
 
-        // Start with DIP switches
+        // Start with DIP switches by setting bit 7 = 1
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x80);
         assert_eq!(kbd.read_u8(KEYBOARD_DATA_PORT), DIP_SWITCHES);
 
-        // Try to latch keyboard data when none is available (bit 5 = 1)
-        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x20);
+        // Try to latch keyboard data when none is available (bit 7 = 0)
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x00);
 
-        // Should still have DIP switches (latched_data unchanged)
+        // Should still have DIP switches (latched_data unchanged, no scancode to latch)
         assert_eq!(kbd.read_u8(KEYBOARD_DATA_PORT), DIP_SWITCHES);
     }
 
@@ -412,8 +413,9 @@ mod tests {
         let mut pic = Pic::new(0x08);
         pic.set_imr(0x00);
 
-        // Enable keyboard mode BEFORE scancode arrives (bit 5 = 1)
-        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x20);
+        // Enable keyboard mode BEFORE scancode arrives (bit 7 = 0)
+        // Note: port_61_state already defaults to 0x00, but we write explicitly here
+        kbd.write_u8(SYSTEM_CONTROL_PORT_B, 0x00);
 
         // At this point, no scancode available, so still DIP switches
         assert_eq!(kbd.read_u8(KEYBOARD_DATA_PORT), DIP_SWITCHES);
@@ -421,7 +423,7 @@ mod tests {
         // Now add a scancode to the queue
         queue.write().unwrap().push_back(0x1E);
 
-        // Tick should fetch the scancode AND auto-latch it because bit 5 = 1
+        // Tick should fetch the scancode AND auto-latch it because bit 7 = 0
         kbd.tick(1, &mut pic);
 
         // Should now read the keyboard scancode without needing another write to port 0x61
