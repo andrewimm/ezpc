@@ -901,6 +901,27 @@ pub fn mul(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
     }
 }
 
+/// NOT r/m - Bitwise NOT (one's complement)
+/// Opcodes: 0xF6 /2 (8-bit), 0xF7 /2 (16-bit)
+///
+/// Inverts all bits in the operand (ones become zeros, zeros become ones).
+/// No flags are affected.
+pub fn not(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    let operand_value = cpu.read_operand(mem, &instr.dst);
+    let is_byte = instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
+
+    if is_byte {
+        // 8-bit NOT: invert all 8 bits
+        let result = !operand_value as u8;
+        cpu.write_operand(mem, &instr.dst, result as u16);
+    } else {
+        // 16-bit NOT: invert all 16 bits
+        let result = !operand_value;
+        cpu.write_operand(mem, &instr.dst, result);
+    }
+    // NOT does not affect any flags
+}
+
 /// Group handler for opcode 0xF6
 /// Handles TEST/NOT/NEG/MUL/IMUL/DIV/IDIV r/m8 based on reg field
 pub fn group_f6(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
@@ -908,7 +929,7 @@ pub fn group_f6(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) 
 
     match reg {
         0 | 1 => test_rm_imm(cpu, mem, instr), // TEST r/m8, imm8
-        2 => panic!("NOT r/m8 not implemented yet"),
+        2 => not(cpu, mem, instr),             // NOT r/m8
         3 => panic!("NEG r/m8 not implemented yet"),
         4 => mul(cpu, mem, instr), // MUL r/m8
         5 => panic!("IMUL r/m8 not implemented yet"),
@@ -925,7 +946,7 @@ pub fn group_f7(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) 
 
     match reg {
         0 | 1 => test_rm_imm(cpu, mem, instr), // TEST r/m16, imm16
-        2 => panic!("NOT r/m16 not implemented yet"),
+        2 => not(cpu, mem, instr),             // NOT r/m16
         3 => panic!("NEG r/m16 not implemented yet"),
         4 => mul(cpu, mem, instr), // MUL r/m16
         5 => panic!("IMUL r/m16 not implemented yet"),

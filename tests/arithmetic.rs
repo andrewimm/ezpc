@@ -1754,3 +1754,238 @@ fn test_mul_r8_edge_case_128() {
     assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), true); // CF set
     assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::OF), true); // OF set
 }
+
+#[test]
+fn test_not_r8() {
+    let mut harness = CpuHarness::new();
+    // NOT AL: 0x55 -> 0xAA
+    harness.load_program(
+        &[
+            0xB0, 0x55, // MOV AL, 0x55
+            0xF6, 0xD0, // NOT AL (ModR/M=D0: reg=010, rm=000 AL, mod=11)
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 0x55
+    assert_eq!(harness.cpu.read_reg8(0), 0x55); // AL = 0x55
+
+    harness.step(); // NOT AL
+    assert_eq!(harness.cpu.read_reg8(0), 0xAA); // AL = 0xAA (inverted)
+}
+
+#[test]
+fn test_not_r8_zero() {
+    let mut harness = CpuHarness::new();
+    // NOT AL: 0x00 -> 0xFF
+    harness.load_program(
+        &[
+            0xB0, 0x00, // MOV AL, 0x00
+            0xF6, 0xD0, // NOT AL
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 0x00
+    harness.step(); // NOT AL
+    assert_eq!(harness.cpu.read_reg8(0), 0xFF); // AL = 0xFF
+}
+
+#[test]
+fn test_not_r8_all_ones() {
+    let mut harness = CpuHarness::new();
+    // NOT AL: 0xFF -> 0x00
+    harness.load_program(
+        &[
+            0xB0, 0xFF, // MOV AL, 0xFF
+            0xF6, 0xD0, // NOT AL
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 0xFF
+    harness.step(); // NOT AL
+    assert_eq!(harness.cpu.read_reg8(0), 0x00); // AL = 0x00
+}
+
+#[test]
+fn test_not_r16() {
+    let mut harness = CpuHarness::new();
+    // NOT AX: 0x5555 -> 0xAAAA
+    harness.load_program(
+        &[
+            0xB8, 0x55, 0x55, // MOV AX, 0x5555
+            0xF7, 0xD0, // NOT AX (ModR/M=D0: reg=010, rm=000 AX, mod=11)
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AX, 0x5555
+    assert_eq!(harness.cpu.regs[0], 0x5555); // AX = 0x5555
+
+    harness.step(); // NOT AX
+    assert_eq!(harness.cpu.regs[0], 0xAAAA); // AX = 0xAAAA (inverted)
+}
+
+#[test]
+fn test_not_r16_zero() {
+    let mut harness = CpuHarness::new();
+    // NOT BX: 0x0000 -> 0xFFFF
+    harness.load_program(
+        &[
+            0xBB, 0x00, 0x00, // MOV BX, 0x0000
+            0xF7, 0xD3, // NOT BX (ModR/M=D3: reg=010, rm=011 BX, mod=11)
+        ],
+        0,
+    );
+
+    harness.step(); // MOV BX, 0x0000
+    harness.step(); // NOT BX
+    assert_eq!(harness.cpu.regs[3], 0xFFFF); // BX = 0xFFFF
+}
+
+#[test]
+fn test_not_r16_all_ones() {
+    let mut harness = CpuHarness::new();
+    // NOT CX: 0xFFFF -> 0x0000
+    harness.load_program(
+        &[
+            0xB9, 0xFF, 0xFF, // MOV CX, 0xFFFF
+            0xF7, 0xD1, // NOT CX (ModR/M=D1: reg=010, rm=001 CX, mod=11)
+        ],
+        0,
+    );
+
+    harness.step(); // MOV CX, 0xFFFF
+    harness.step(); // NOT CX
+    assert_eq!(harness.cpu.regs[1], 0x0000); // CX = 0x0000
+}
+
+#[test]
+fn test_not_r16_pattern() {
+    let mut harness = CpuHarness::new();
+    // NOT DX: 0x1234 -> 0xEDCB
+    harness.load_program(
+        &[
+            0xBA, 0x34, 0x12, // MOV DX, 0x1234
+            0xF7, 0xD2, // NOT DX (ModR/M=D2: reg=010, rm=010 DX, mod=11)
+        ],
+        0,
+    );
+
+    harness.step(); // MOV DX, 0x1234
+    harness.step(); // NOT DX
+    assert_eq!(harness.cpu.regs[2], 0xEDCB); // DX = 0xEDCB
+}
+
+#[test]
+fn test_not_m8() {
+    let mut harness = CpuHarness::new();
+    // Set BX to point to memory location
+    harness.cpu.regs[3] = 0x0100; // BX = 0x0100
+
+    // Write test value to memory
+    harness.mem.write_u8(0x0100, 0xA5);
+
+    // NOT byte [BX]: 0xA5 -> 0x5A
+    harness.load_program(
+        &[
+            0xF6, 0x17, // NOT byte [BX] (ModR/M=17: reg=010, rm=111 [BX], mod=00)
+        ],
+        0,
+    );
+
+    harness.step(); // NOT byte [BX]
+    assert_eq!(harness.mem.read_u8(0x0100), 0x5A); // Memory inverted: 0xA5 -> 0x5A
+}
+
+#[test]
+fn test_not_m16() {
+    let mut harness = CpuHarness::new();
+    // Set BX to point to memory location
+    harness.cpu.regs[3] = 0x0200; // BX = 0x0200
+
+    // Write test value to memory
+    harness.mem.write_u16(0x0200, 0x1234);
+
+    // NOT word [BX]: 0x1234 -> 0xEDCB
+    harness.load_program(
+        &[
+            0xF7, 0x17, // NOT word [BX] (ModR/M=17: reg=010, rm=111 [BX], mod=00)
+        ],
+        0,
+    );
+
+    harness.step(); // NOT word [BX]
+    assert_eq!(harness.mem.read_u16(0x0200), 0xEDCB); // Memory inverted: 0x1234 -> 0xEDCB
+}
+
+#[test]
+fn test_not_does_not_affect_flags() {
+    let mut harness = CpuHarness::new();
+    // Set all flags to known state
+    harness.cpu.set_flags(0xFFFF); // Set all flags
+
+    // NOT AL
+    harness.load_program(
+        &[
+            0xB0, 0x55, // MOV AL, 0x55
+            0xF6, 0xD0, // NOT AL
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 0x55
+    let flags_before = harness.cpu.get_flags();
+
+    harness.step(); // NOT AL
+    let flags_after = harness.cpu.get_flags();
+
+    // Flags should be unchanged
+    assert_eq!(flags_after, flags_before);
+}
+
+#[test]
+fn test_not_m8_with_displacement() {
+    let mut harness = CpuHarness::new();
+    // Set BX to base address
+    harness.cpu.regs[3] = 0x0100; // BX = 0x0100
+
+    // Write test value to memory at BX+0x10
+    harness.mem.write_u8(0x0110, 0x3C);
+
+    // NOT byte [BX+0x10]: 0x3C -> 0xC3
+    harness.load_program(
+        &[
+            0xF6, 0x57,
+            0x10, // NOT byte [BX+0x10] (ModR/M=57: reg=010, rm=111 [BX+disp8], mod=01)
+        ],
+        0,
+    );
+
+    harness.step(); // NOT byte [BX+0x10]
+    assert_eq!(harness.mem.read_u8(0x0110), 0xC3); // Memory inverted: 0x3C -> 0xC3
+}
+
+#[test]
+fn test_not_double_inversion() {
+    let mut harness = CpuHarness::new();
+    // NOT AL twice should return to original value
+    harness.load_program(
+        &[
+            0xB0, 0x42, // MOV AL, 0x42
+            0xF6, 0xD0, // NOT AL (0x42 -> 0xBD)
+            0xF6, 0xD0, // NOT AL (0xBD -> 0x42)
+        ],
+        0,
+    );
+
+    harness.step(); // MOV AL, 0x42
+    assert_eq!(harness.cpu.read_reg8(0), 0x42);
+
+    harness.step(); // NOT AL
+    assert_eq!(harness.cpu.read_reg8(0), 0xBD);
+
+    harness.step(); // NOT AL again
+    assert_eq!(harness.cpu.read_reg8(0), 0x42); // Back to original value
+}
