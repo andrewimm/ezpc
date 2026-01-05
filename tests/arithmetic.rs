@@ -1564,3 +1564,159 @@ fn test_dec_dh() {
 
     assert_eq!(harness.cpu.read_reg8(6), 0x4F); // DH
 }
+
+// === MUL instruction tests ===
+
+#[test]
+fn test_mul_r8_no_overflow() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 5; MOV BL, 3; MUL BL (AL * BL -> AX)
+    // Expected: AL = 5 * 3 = 15, AX = 0x000F, CF = 0, OF = 0
+    harness.load_program(&[0xB0, 0x05, 0xB3, 0x03, 0xF6, 0xE3], 0);
+
+    harness.step(); // MOV AL, 5
+    harness.step(); // MOV BL, 3
+    harness.step(); // MUL BL
+
+    assert_eq!(harness.cpu.regs[0], 0x000F); // AX = 15
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false); // CF clear (no overflow)
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::OF), false); // OF clear (no overflow)
+}
+
+#[test]
+fn test_mul_r8_with_overflow() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x10 (16); MOV BL, 0x10 (16); MUL BL
+    // Expected: AL * BL = 16 * 16 = 256 = 0x0100
+    // AX = 0x0100, AH = 1 (non-zero), CF = 1, OF = 1
+    harness.load_program(&[0xB0, 0x10, 0xB3, 0x10, 0xF6, 0xE3], 0);
+
+    harness.step(); // MOV AL, 0x10
+    harness.step(); // MOV BL, 0x10
+    harness.step(); // MUL BL
+
+    assert_eq!(harness.cpu.regs[0], 0x0100); // AX = 256
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), true); // CF set (overflow)
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::OF), true); // OF set (overflow)
+}
+
+#[test]
+fn test_mul_r8_max_value() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0xFF (255); MOV BL, 0xFF (255); MUL BL
+    // Expected: 255 * 255 = 65025 = 0xFE01
+    // AX = 0xFE01, CF = 1, OF = 1
+    harness.load_program(&[0xB0, 0xFF, 0xB3, 0xFF, 0xF6, 0xE3], 0);
+
+    harness.step(); // MOV AL, 0xFF
+    harness.step(); // MOV BL, 0xFF
+    harness.step(); // MUL BL
+
+    assert_eq!(harness.cpu.regs[0], 0xFE01); // AX = 65025
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), true); // CF set
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::OF), true); // OF set
+}
+
+#[test]
+fn test_mul_r8_by_zero() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x42; MOV BL, 0x00; MUL BL
+    // Expected: AL * 0 = 0, AX = 0, CF = 0, OF = 0
+    harness.load_program(&[0xB0, 0x42, 0xB3, 0x00, 0xF6, 0xE3], 0);
+
+    harness.step(); // MOV AL, 0x42
+    harness.step(); // MOV BL, 0x00
+    harness.step(); // MUL BL
+
+    assert_eq!(harness.cpu.regs[0], 0x0000); // AX = 0
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false); // CF clear
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::OF), false); // OF clear
+}
+
+#[test]
+fn test_mul_r16_no_overflow() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 100; MOV BX, 200; MUL BX (AX * BX -> DX:AX)
+    // Expected: 100 * 200 = 20000 = 0x4E20
+    // DX:AX = 0x0000:4E20, CF = 0, OF = 0
+    harness.load_program(&[0xB8, 0x64, 0x00, 0xBB, 0xC8, 0x00, 0xF7, 0xE3], 0);
+
+    harness.step(); // MOV AX, 100
+    harness.step(); // MOV BX, 200
+    harness.step(); // MUL BX
+
+    assert_eq!(harness.cpu.regs[0], 0x4E20); // AX = 20000 (low word)
+    assert_eq!(harness.cpu.regs[2], 0x0000); // DX = 0 (high word)
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false); // CF clear
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::OF), false); // OF clear
+}
+
+#[test]
+fn test_mul_r16_with_overflow() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0x1000 (4096); MOV BX, 0x1000 (4096); MUL BX
+    // Expected: 4096 * 4096 = 16777216 = 0x01000000
+    // DX:AX = 0x0100:0000, CF = 1, OF = 1
+    harness.load_program(&[0xB8, 0x00, 0x10, 0xBB, 0x00, 0x10, 0xF7, 0xE3], 0);
+
+    harness.step(); // MOV AX, 0x1000
+    harness.step(); // MOV BX, 0x1000
+    harness.step(); // MUL BX
+
+    assert_eq!(harness.cpu.regs[0], 0x0000); // AX = 0 (low word)
+    assert_eq!(harness.cpu.regs[2], 0x0100); // DX = 0x0100 (high word)
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), true); // CF set
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::OF), true); // OF set
+}
+
+#[test]
+fn test_mul_r16_max_value() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0xFFFF (65535); MOV BX, 0xFFFF (65535); MUL BX
+    // Expected: 65535 * 65535 = 4294836225 = 0xFFFE0001
+    // DX:AX = 0xFFFE:0001
+    harness.load_program(&[0xB8, 0xFF, 0xFF, 0xBB, 0xFF, 0xFF, 0xF7, 0xE3], 0);
+
+    harness.step(); // MOV AX, 0xFFFF
+    harness.step(); // MOV BX, 0xFFFF
+    harness.step(); // MUL BX
+
+    assert_eq!(harness.cpu.regs[0], 0x0001); // AX (low word)
+    assert_eq!(harness.cpu.regs[2], 0xFFFE); // DX (high word)
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), true); // CF set
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::OF), true); // OF set
+}
+
+#[test]
+fn test_mul_r16_by_zero() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0x1234; MOV BX, 0x0000; MUL BX
+    // Expected: AX * 0 = 0, DX:AX = 0:0, CF = 0, OF = 0
+    harness.load_program(&[0xB8, 0x34, 0x12, 0xBB, 0x00, 0x00, 0xF7, 0xE3], 0);
+
+    harness.step(); // MOV AX, 0x1234
+    harness.step(); // MOV BX, 0x0000
+    harness.step(); // MUL BX
+
+    assert_eq!(harness.cpu.regs[0], 0x0000); // AX = 0
+    assert_eq!(harness.cpu.regs[2], 0x0000); // DX = 0
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), false); // CF clear
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::OF), false); // OF clear
+}
+
+#[test]
+fn test_mul_r8_edge_case_128() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x80 (128); MOV BL, 0x02; MUL BL
+    // Expected: 128 * 2 = 256 = 0x0100
+    // AX = 0x0100, CF = 1, OF = 1
+    harness.load_program(&[0xB0, 0x80, 0xB3, 0x02, 0xF6, 0xE3], 0);
+
+    harness.step(); // MOV AL, 0x80
+    harness.step(); // MOV BL, 0x02
+    harness.step(); // MUL BL
+
+    assert_eq!(harness.cpu.regs[0], 0x0100); // AX = 256
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF), true); // CF set
+    assert_eq!(harness.cpu.get_flag(ezpc::cpu::Cpu::OF), true); // OF set
+}

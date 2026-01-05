@@ -853,3 +853,84 @@ pub fn group_fe(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) 
         _ => panic!("Invalid reg field {} for opcode 0xFE", reg),
     }
 }
+
+/// MUL r/m - Unsigned multiply
+/// Handles both byte (0xF6 /4) and word (0xF7 /4) variants
+///
+/// For byte operation: AL * r/m8 → AX
+/// For word operation: AX * r/m16 → DX:AX
+///
+/// Flags affected: CF, OF (set if upper half is non-zero)
+///                 SF, ZF, PF, AF are undefined
+pub fn mul(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    let operand_value = cpu.read_operand(mem, &instr.dst);
+    let is_byte = instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
+
+    if is_byte {
+        // 8-bit multiply: AL * r/m8 → AX
+        let al = cpu.read_reg8(0); // Read AL
+        let result = (al as u16) * (operand_value as u8 as u16);
+        cpu.regs[0] = result; // Store full 16-bit result in AX
+
+        // CF and OF are set if AH is non-zero (upper 8 bits)
+        let upper_half_nonzero = (result & 0xFF00) != 0;
+        if upper_half_nonzero {
+            cpu.set_flag(Cpu::CF, true);
+            cpu.set_flag(Cpu::OF, true);
+        } else {
+            cpu.set_flag(Cpu::CF, false);
+            cpu.set_flag(Cpu::OF, false);
+        }
+    } else {
+        // 16-bit multiply: AX * r/m16 → DX:AX
+        let ax = cpu.regs[0]; // Read AX
+        let result = (ax as u32) * (operand_value as u32);
+
+        cpu.regs[0] = (result & 0xFFFF) as u16; // Store low word in AX
+        cpu.regs[2] = (result >> 16) as u16; // Store high word in DX
+
+        // CF and OF are set if DX is non-zero (upper 16 bits)
+        let upper_half_nonzero = (result & 0xFFFF0000) != 0;
+        if upper_half_nonzero {
+            cpu.set_flag(Cpu::CF, true);
+            cpu.set_flag(Cpu::OF, true);
+        } else {
+            cpu.set_flag(Cpu::CF, false);
+            cpu.set_flag(Cpu::OF, false);
+        }
+    }
+}
+
+/// Group handler for opcode 0xF6
+/// Handles TEST/NOT/NEG/MUL/IMUL/DIV/IDIV r/m8 based on reg field
+pub fn group_f6(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    let reg = (instr.dst.value >> 8) as u8; // High byte stores the reg field
+
+    match reg {
+        0 | 1 => panic!("TEST r/m8, imm8 not implemented yet"),
+        2 => panic!("NOT r/m8 not implemented yet"),
+        3 => panic!("NEG r/m8 not implemented yet"),
+        4 => mul(cpu, mem, instr), // MUL r/m8
+        5 => panic!("IMUL r/m8 not implemented yet"),
+        6 => panic!("DIV r/m8 not implemented yet"),
+        7 => panic!("IDIV r/m8 not implemented yet"),
+        _ => unreachable!(),
+    }
+}
+
+/// Group handler for opcode 0xF7
+/// Handles TEST/NOT/NEG/MUL/IMUL/DIV/IDIV r/m16 based on reg field
+pub fn group_f7(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    let reg = (instr.dst.value >> 8) as u8; // High byte stores the reg field
+
+    match reg {
+        0 | 1 => panic!("TEST r/m16, imm16 not implemented yet"),
+        2 => panic!("NOT r/m16 not implemented yet"),
+        3 => panic!("NEG r/m16 not implemented yet"),
+        4 => mul(cpu, mem, instr), // MUL r/m16
+        5 => panic!("IMUL r/m16 not implemented yet"),
+        6 => panic!("DIV r/m16 not implemented yet"),
+        7 => panic!("IDIV r/m16 not implemented yet"),
+        _ => unreachable!(),
+    }
+}

@@ -123,7 +123,7 @@ impl IoDevice for Keyboard {
                     // Latch DIP switches and clear current scancode
                     self.latched_data = DIP_SWITCHES;
                     self.current_scancode = None; // Clear scancode when switching to DIP mode
-                    // IRQ will be lowered on next tick when current_scancode is None
+                                                  // IRQ will be lowered on next tick when current_scancode is None
                 } else {
                     // Latch keyboard scancode if available (copy, don't consume)
                     if let Some(scancode) = self.current_scancode {
