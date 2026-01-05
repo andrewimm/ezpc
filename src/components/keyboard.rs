@@ -187,6 +187,31 @@ impl IoDevice for Keyboard {
     }
 
     fn tick(&mut self, _cycles: u16, pic: &mut Pic) {
+        // Priority 1: Handle keyboard reset scancode injection (0xAA)
+        if self.reset_scancode_pending && self.current_scancode.is_none() {
+            // Lower IRQ first (if needed) for edge detection
+            if self.irq_level {
+                pic.set_irq_level(1, false);
+                self.irq_level = false;
+            }
+
+            // Inject 0xAA scancode (keyboard self-test passed)
+            self.current_scancode = Some(0xAA);
+            self.reset_scancode_pending = false;
+            self.reset_state = KeyboardResetState::Idle;
+
+            // Latch immediately if in keyboard mode (bit 7 = 0)
+            if self.port_61_state & 0x80 == 0 {
+                self.latched_data = 0xAA;
+            }
+
+            // Raise IRQ1 (creates edge since we just lowered it)
+            pic.set_irq_level(1, true);
+            self.irq_level = true;
+            return; // Don't process GUI queue this tick
+        }
+
+        // Priority 2: Process GUI scancode queue
         // If we don't have a pending scancode, try to fetch one from the queue
         if self.current_scancode.is_none() {
             // First, lower IRQ if it's still high (ensures edge detection for next scancode)
