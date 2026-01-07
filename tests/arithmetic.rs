@@ -1756,6 +1756,130 @@ fn test_mul_r8_edge_case_128() {
 }
 
 #[test]
+fn test_div_r8_basic() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 100; MOV BL, 5; DIV BL
+    // Expected: 100 ÷ 5 = 20 remainder 0
+    // AL = 20 (quotient), AH = 0 (remainder)
+    harness.load_program(&[0xB8, 0x64, 0x00, 0xB3, 0x05, 0xF6, 0xF3], 0);
+
+    harness.step(); // MOV AX, 100
+    harness.step(); // MOV BL, 5
+    harness.step(); // DIV BL
+
+    assert_eq!(harness.cpu.read_reg8(0), 20); // AL = 20 (quotient)
+    assert_eq!(harness.cpu.read_reg8(4), 0); // AH = 0 (remainder)
+}
+
+#[test]
+fn test_div_r8_with_remainder() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 17; MOV BL, 5; DIV BL
+    // Expected: 17 ÷ 5 = 3 remainder 2
+    // AL = 3 (quotient), AH = 2 (remainder)
+    harness.load_program(&[0xB8, 0x11, 0x00, 0xB3, 0x05, 0xF6, 0xF3], 0);
+
+    harness.step(); // MOV AX, 17
+    harness.step(); // MOV BL, 5
+    harness.step(); // DIV BL
+
+    assert_eq!(harness.cpu.read_reg8(0), 3); // AL = 3 (quotient)
+    assert_eq!(harness.cpu.read_reg8(4), 2); // AH = 2 (remainder)
+}
+
+#[test]
+fn test_div_r8_max_quotient() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 0xFF; MOV BL, 1; DIV BL
+    // Expected: 255 ÷ 1 = 255 remainder 0
+    // AL = 255 (quotient), AH = 0 (remainder)
+    harness.load_program(&[0xB8, 0xFF, 0x00, 0xB3, 0x01, 0xF6, 0xF3], 0);
+
+    harness.step(); // MOV AX, 0xFF
+    harness.step(); // MOV BL, 1
+    harness.step(); // DIV BL
+
+    assert_eq!(harness.cpu.read_reg8(0), 255); // AL = 255 (quotient)
+    assert_eq!(harness.cpu.read_reg8(4), 0); // AH = 0 (remainder)
+}
+
+#[test]
+fn test_div_r16_basic() {
+    let mut harness = CpuHarness::new();
+    // MOV DX, 0; MOV AX, 1000; MOV BX, 10; DIV BX
+    // Expected: 1000 ÷ 10 = 100 remainder 0
+    // AX = 100 (quotient), DX = 0 (remainder)
+    harness.load_program(
+        &[
+            0xBA, 0x00, 0x00, // MOV DX, 0
+            0xB8, 0xE8, 0x03, // MOV AX, 1000
+            0xBB, 0x0A, 0x00, // MOV BX, 10
+            0xF7, 0xF3, // DIV BX
+        ],
+        0,
+    );
+
+    harness.step(); // MOV DX, 0
+    harness.step(); // MOV AX, 1000
+    harness.step(); // MOV BX, 10
+    harness.step(); // DIV BX
+
+    assert_eq!(harness.cpu.regs[0], 100); // AX = 100 (quotient)
+    assert_eq!(harness.cpu.regs[2], 0); // DX = 0 (remainder)
+}
+
+#[test]
+fn test_div_r16_with_remainder() {
+    let mut harness = CpuHarness::new();
+    // MOV DX, 0; MOV AX, 1007; MOV BX, 10; DIV BX
+    // Expected: 1007 ÷ 10 = 100 remainder 7
+    // AX = 100 (quotient), DX = 7 (remainder)
+    harness.load_program(
+        &[
+            0xBA, 0x00, 0x00, // MOV DX, 0
+            0xB8, 0xEF, 0x03, // MOV AX, 1007
+            0xBB, 0x0A, 0x00, // MOV BX, 10
+            0xF7, 0xF3, // DIV BX
+        ],
+        0,
+    );
+
+    harness.step(); // MOV DX, 0
+    harness.step(); // MOV AX, 1007
+    harness.step(); // MOV BX, 10
+    harness.step(); // DIV BX
+
+    assert_eq!(harness.cpu.regs[0], 100); // AX = 100 (quotient)
+    assert_eq!(harness.cpu.regs[2], 7); // DX = 7 (remainder)
+}
+
+#[test]
+fn test_div_r16_large_dividend() {
+    let mut harness = CpuHarness::new();
+    // MOV DX, 1; MOV AX, 0; MOV BX, 0x10000 would overflow, so use smaller
+    // MOV DX, 0; MOV AX, 0xFFFF; MOV BX, 0xFF; DIV BX
+    // Expected: 65535 ÷ 255 = 257 remainder 0
+    // AX = 257 (quotient), DX = 0 (remainder)
+    harness.load_program(
+        &[
+            0xBA, 0x00, 0x00, // MOV DX, 0
+            0xB8, 0xFF, 0xFF, // MOV AX, 0xFFFF
+            0xBB, 0xFF, 0x00, // MOV BX, 0xFF
+            0xF7, 0xF3, // DIV BX
+        ],
+        0,
+    );
+
+    harness.step(); // MOV DX, 0
+    harness.step(); // MOV AX, 0xFFFF
+    harness.step(); // MOV BX, 0xFF
+    harness.step(); // DIV BX
+
+    assert_eq!(harness.cpu.regs[0], 257); // AX = 257 (quotient)
+    assert_eq!(harness.cpu.regs[2], 0); // DX = 0 (remainder)
+}
+
+#[test]
 fn test_not_r8() {
     let mut harness = CpuHarness::new();
     // NOT AL: 0x55 -> 0xAA

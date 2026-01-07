@@ -1045,6 +1045,73 @@ pub fn mul(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
     }
 }
 
+/// DIV r/m - Unsigned Divide
+/// Opcodes: 0xF6 /6 (8-bit), 0xF7 /6 (16-bit)
+///
+/// Performs unsigned division:
+/// - 8-bit: AX ÷ r/m8 → AL (quotient), AH (remainder)
+/// - 16-bit: DX:AX ÷ r/m16 → AX (quotient), DX (remainder)
+///
+/// Triggers interrupt 0 if:
+/// - Divisor is 0 (divide by zero)
+/// - Quotient doesn't fit in destination register (overflow)
+///
+/// Flags: All flags are undefined after DIV
+pub fn div(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    let divisor = cpu.read_operand(mem, &instr.dst);
+    let is_byte = instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
+
+    if is_byte {
+        // 8-bit divide: AX ÷ r/m8 → AL (quotient), AH (remainder)
+        let divisor = divisor as u8;
+
+        // Check for divide by zero
+        if divisor == 0 {
+            panic!("DIV: Division by zero");
+        }
+
+        let ax = cpu.regs[0]; // Read AX (dividend)
+        let quotient = ax / (divisor as u16);
+        let remainder = ax % (divisor as u16);
+
+        // Check for quotient overflow (quotient must fit in AL)
+        if quotient > 0xFF {
+            panic!("DIV: Quotient overflow (result doesn't fit in AL)");
+        }
+
+        // Store quotient in AL, remainder in AH
+        let al = quotient as u8;
+        let ah = remainder as u8;
+        cpu.regs[0] = ((ah as u16) << 8) | (al as u16);
+    } else {
+        // 16-bit divide: DX:AX ÷ r/m16 → AX (quotient), DX (remainder)
+        let divisor = divisor as u16;
+
+        // Check for divide by zero
+        if divisor == 0 {
+            panic!("DIV: Division by zero");
+        }
+
+        let ax = cpu.regs[0]; // Low word
+        let dx = cpu.regs[2]; // High word
+        let dividend = ((dx as u32) << 16) | (ax as u32);
+
+        let quotient = dividend / (divisor as u32);
+        let remainder = dividend % (divisor as u32);
+
+        // Check for quotient overflow (quotient must fit in AX)
+        if quotient > 0xFFFF {
+            panic!("DIV: Quotient overflow (result doesn't fit in AX)");
+        }
+
+        // Store quotient in AX, remainder in DX
+        cpu.regs[0] = quotient as u16;
+        cpu.regs[2] = remainder as u16;
+    }
+
+    // Flags are undefined after DIV - we don't modify them
+}
+
 /// NOT r/m - Bitwise NOT (one's complement)
 /// Opcodes: 0xF6 /2 (8-bit), 0xF7 /2 (16-bit)
 ///
@@ -1077,7 +1144,7 @@ pub fn group_f6(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) 
         3 => panic!("NEG r/m8 not implemented yet"),
         4 => mul(cpu, mem, instr), // MUL r/m8
         5 => panic!("IMUL r/m8 not implemented yet"),
-        6 => panic!("DIV r/m8 not implemented yet"),
+        6 => div(cpu, mem, instr), // DIV r/m8
         7 => panic!("IDIV r/m8 not implemented yet"),
         _ => unreachable!(),
     }
@@ -1094,7 +1161,7 @@ pub fn group_f7(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) 
         3 => panic!("NEG r/m16 not implemented yet"),
         4 => mul(cpu, mem, instr), // MUL r/m16
         5 => panic!("IMUL r/m16 not implemented yet"),
-        6 => panic!("DIV r/m16 not implemented yet"),
+        6 => div(cpu, mem, instr), // DIV r/m16
         7 => panic!("IDIV r/m16 not implemented yet"),
         _ => unreachable!(),
     }
