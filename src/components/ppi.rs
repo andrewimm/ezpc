@@ -28,9 +28,9 @@ const DIP_SWITCHES: u8 = 0b00111101; // 0x3D
 /// Keyboard reset state machine
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum KeyboardResetState {
-    /// Normal operation (bit 6 = 0, clock enabled)
+    /// Normal operation (bit 6 = 1, clock high/enabled)
     Idle,
-    /// Reset in progress (bit 6 = 1, clock disabled)
+    /// Reset in progress (bit 6 = 0, clock low/disabled)
     ResetAsserted,
 }
 
@@ -151,20 +151,20 @@ impl IoDevice for Ppi {
 
             PPI_PORT_B => {
                 // Detect keyboard reset via bit 6 transitions
-                // Bit 6: 0 = keyboard clock enabled, 1 = keyboard clock disabled (reset)
+                // Bit 6: 0 = clock low (disabled/reset), 1 = clock high (enabled/normal)
                 let old_bit6 = (self.port_b_state & 0x40) != 0;
                 let new_bit6 = (value & 0x40) != 0;
 
                 match (old_bit6, new_bit6) {
-                    (false, true) => {
-                        // Keyboard clock disabled (reset asserted)
+                    (true, false) => {
+                        // Clock went low (1→0): reset asserted
                         self.reset_state = KeyboardResetState::ResetAsserted;
                         // Clear any latched scancode during reset
                         self.latched_scancode = None;
                         self.interrupt_pending = false;
                     }
-                    (true, false) => {
-                        // Keyboard clock re-enabled (reset released)
+                    (false, true) => {
+                        // Clock went high (0→1): reset released
                         // Schedule keyboard reset for next tick
                         if self.reset_state == KeyboardResetState::ResetAsserted {
                             self.reset_pending = true;
@@ -347,12 +347,15 @@ mod tests {
         let mut pic = Pic::new(0x08);
         pic.set_imr(0x00);
 
-        // 1. Assert reset (bit 6 = 1)
+        // Start with clock high (bit 6 = 1)
         ppi.write_u8(PPI_PORT_B, 0x40);
+
+        // 1. Assert reset: clock goes low (bit 6 = 0)
+        ppi.write_u8(PPI_PORT_B, 0x00);
         assert_eq!(ppi.reset_state, KeyboardResetState::ResetAsserted);
 
-        // 2. Release reset (bit 6 = 0)
-        ppi.write_u8(PPI_PORT_B, 0x00);
+        // 2. Release reset: clock goes high (bit 6 = 1)
+        ppi.write_u8(PPI_PORT_B, 0x40);
         assert!(ppi.reset_pending);
 
         // 3. Tick should call keyboard.reset() and latch 0xAA
@@ -372,17 +375,20 @@ mod tests {
         let mut pic = Pic::new(0x08);
         pic.set_imr(0x00);
 
+        // Start with clock high
+        ppi.write_u8(PPI_PORT_B, 0x40);
+
         // Add a scancode and latch it
         queue.write().unwrap().push_back(0x1E);
         ppi.tick(1, &mut pic);
         assert_eq!(ppi.latched_scancode, Some(0x1E));
 
-        // Assert reset - should clear the latched scancode
-        ppi.write_u8(PPI_PORT_B, 0x40);
+        // Assert reset (clock low) - should clear the latched scancode
+        ppi.write_u8(PPI_PORT_B, 0x00);
         assert_eq!(ppi.latched_scancode, None);
 
-        // Release reset
-        ppi.write_u8(PPI_PORT_B, 0x00);
+        // Release reset (clock high)
+        ppi.write_u8(PPI_PORT_B, 0x40);
 
         // Tick should latch 0xAA (from keyboard.reset())
         ppi.tick(1, &mut pic);
@@ -396,14 +402,17 @@ mod tests {
         let mut pic = Pic::new(0x08);
         pic.set_imr(0x00);
 
+        // Start with clock high
+        ppi.write_u8(PPI_PORT_B, 0x40);
+
         // Add multiple scancodes to queue
         queue.write().unwrap().push_back(0x1E);
         queue.write().unwrap().push_back(0x30);
         queue.write().unwrap().push_back(0x2E);
 
-        // Perform reset
-        ppi.write_u8(PPI_PORT_B, 0x40);
+        // Perform reset: clock low then clock high
         ppi.write_u8(PPI_PORT_B, 0x00);
+        ppi.write_u8(PPI_PORT_B, 0x40);
 
         // Tick - keyboard.reset() clears queue and adds 0xAA
         ppi.tick(1, &mut pic);
@@ -478,32 +487,35 @@ mod tests {
     }
 
     #[test]
-    fn test_reset_only_on_falling_edge() {
+    fn test_reset_only_on_rising_edge() {
         let queue = Arc::new(RwLock::new(VecDeque::new()));
         let mut ppi = Ppi::new(queue);
         let mut pic = Pic::new(0x08);
         pic.set_imr(0x00);
 
-        // Write bit 6=1 multiple times (no transition after first)
+        // Start with clock high
         ppi.write_u8(PPI_PORT_B, 0x40);
-        ppi.write_u8(PPI_PORT_B, 0x40);
-        ppi.write_u8(PPI_PORT_B, 0x40);
+
+        // Write bit 6=0 multiple times (no transition after first)
+        ppi.write_u8(PPI_PORT_B, 0x00);
+        ppi.write_u8(PPI_PORT_B, 0x00);
+        ppi.write_u8(PPI_PORT_B, 0x00);
 
         // Should be in ResetAsserted state
         assert_eq!(ppi.reset_state, KeyboardResetState::ResetAsserted);
         assert!(!ppi.reset_pending);
 
-        // Single falling edge (1→0) should trigger reset
-        ppi.write_u8(PPI_PORT_B, 0x00);
+        // Single rising edge (0→1) should trigger reset
+        ppi.write_u8(PPI_PORT_B, 0x40);
         assert!(ppi.reset_pending);
 
         // Tick should generate exactly one 0xAA
         ppi.tick(1, &mut pic);
         assert_eq!(ppi.read_u8(PPI_PORT_A), 0xAA);
 
-        // Additional writes with bit 6=0 (no transition) should not generate more 0xAA
-        ppi.write_u8(PPI_PORT_B, 0x00);
-        ppi.write_u8(PPI_PORT_B, 0x00);
+        // Additional writes with bit 6=1 (no transition) should not generate more 0xAA
+        ppi.write_u8(PPI_PORT_B, 0x40);
+        ppi.write_u8(PPI_PORT_B, 0x40);
         ppi.tick(1, &mut pic);
 
         // No new scancode should be generated
