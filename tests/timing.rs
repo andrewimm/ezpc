@@ -112,7 +112,7 @@ fn test_ret_near_cycles() {
     // Set up stack with return address
     harness.cpu.write_reg16(4, 0xFFFC); // SP
     harness.cpu.write_seg(2, 0); // SS
-    // Write return address to stack
+                                 // Write return address to stack
     harness.mem.write_u16(0xFFFC, 0x1000);
 
     let step_cycles = harness.step();

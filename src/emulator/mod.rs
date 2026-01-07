@@ -99,11 +99,14 @@ impl EmulatorState {
             }
         }
 
-        // Step CPU and update peripherals with cycle counts
-        // For now, execute a fixed number of instructions per frame
-        const INSTRUCTIONS_PER_FRAME: usize = 10000; // Placeholder
+        // IBM 5150 runs at 4.77 MHz, targeting 60 FPS
+        // 4,770,000 cycles/sec / 60 frames/sec = 79,500 cycles per frame
+        const CYCLES_PER_FRAME: u64 = 79_500;
 
-        for _ in 0..INSTRUCTIONS_PER_FRAME {
+        // Run CPU until we've executed enough cycles for this frame
+        let target_cycles = self.cpu.total_cycles + CYCLES_PER_FRAME;
+
+        while self.cpu.total_cycles < target_cycles {
             let cycles = self.cpu.step(&mut self.memory);
             self.memory.tick(cycles);
 

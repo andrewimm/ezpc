@@ -24,54 +24,52 @@ use crate::cpu::decode::{Operand, OperandType};
 /// timing and handlers adjust for specific operations.
 pub static BASE_CYCLES: [u8; 256] = [
     // 0x00-0x0F: ADD, OR, PUSH ES, POP ES
-    3,  3,  3,  3,  4,  4,  14, 12, // ADD variants, PUSH/POP ES
-    3,  3,  3,  3,  4,  4,  14, 0,  // OR variants, PUSH CS, 0x0F invalid
+    3, 3, 3, 3, 4, 4, 14, 12, // ADD variants, PUSH/POP ES
+    3, 3, 3, 3, 4, 4, 14, 0, // OR variants, PUSH CS, 0x0F invalid
     // 0x10-0x1F: ADC, SBB, PUSH SS, POP SS, PUSH DS, POP DS
-    3,  3,  3,  3,  4,  4,  14, 12, // ADC variants, PUSH/POP SS
-    3,  3,  3,  3,  4,  4,  14, 12, // SBB variants, PUSH/POP DS
+    3, 3, 3, 3, 4, 4, 14, 12, // ADC variants, PUSH/POP SS
+    3, 3, 3, 3, 4, 4, 14, 12, // SBB variants, PUSH/POP DS
     // 0x20-0x2F: AND, DAA, SUB, DAS
-    3,  3,  3,  3,  4,  4,  0,  4,  // AND variants, ES prefix, DAA
-    3,  3,  3,  3,  4,  4,  0,  4,  // SUB variants, CS prefix, DAS
+    3, 3, 3, 3, 4, 4, 0, 4, // AND variants, ES prefix, DAA
+    3, 3, 3, 3, 4, 4, 0, 4, // SUB variants, CS prefix, DAS
     // 0x30-0x3F: XOR, AAA, CMP, AAS
-    3,  3,  3,  3,  4,  4,  0,  4,  // XOR variants, SS prefix, AAA
-    3,  3,  3,  3,  4,  4,  0,  4,  // CMP variants, DS prefix, AAS
+    3, 3, 3, 3, 4, 4, 0, 4, // XOR variants, SS prefix, AAA
+    3, 3, 3, 3, 4, 4, 0, 4, // CMP variants, DS prefix, AAS
     // 0x40-0x4F: INC/DEC r16
-    2,  2,  2,  2,  2,  2,  2,  2,  // INC r16
-    2,  2,  2,  2,  2,  2,  2,  2,  // DEC r16
+    2, 2, 2, 2, 2, 2, 2, 2, // INC r16
+    2, 2, 2, 2, 2, 2, 2, 2, // DEC r16
     // 0x50-0x5F: PUSH/POP r16
     15, 15, 15, 15, 15, 15, 15, 15, // PUSH r16
     12, 12, 12, 12, 12, 12, 12, 12, // POP r16
     // 0x60-0x6F: Invalid on 8088
-    0,  0,  0,  0,  0,  0,  0,  0,
-    0,  0,  0,  0,  0,  0,  0,  0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     // 0x70-0x7F: Jcc short (4 not taken, 16 taken - handlers adjust)
-    4,  4,  4,  4,  4,  4,  4,  4,
-    4,  4,  4,  4,  4,  4,  4,  4,
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
     // 0x80-0x8F: Group arithmetic, TEST, XCHG, MOV, LEA
-    4,  4,  4,  4,  5,  5,  4,  4,  // Groups 0x80-83, TEST, XCHG
-    2,  2,  2,  2,  2,  2,  2,  0,  // MOV r/m,r and r,r/m, MOV sreg, LEA, POP r/m
+    4, 4, 4, 4, 5, 5, 4, 4, // Groups 0x80-83, TEST, XCHG
+    2, 2, 2, 2, 2, 2, 2, 0, // MOV r/m,r and r,r/m, MOV sreg, LEA, POP r/m
     // 0x90-0x9F: NOP, XCHG AX, CBW, CWD, CALL far, WAIT, PUSHF, POPF, SAHF, LAHF
-    3,  3,  3,  3,  3,  3,  3,  3,  // NOP, XCHG AX,r16
-    2,  5,  36, 0,  14, 12, 4,  4,  // CBW, CWD, CALL far, WAIT, PUSHF, POPF, SAHF, LAHF
+    3, 3, 3, 3, 3, 3, 3, 3, // NOP, XCHG AX,r16
+    2, 5, 36, 0, 14, 12, 4, 4, // CBW, CWD, CALL far, WAIT, PUSHF, POPF, SAHF, LAHF
     // 0xA0-0xAF: MOV moffs, string ops
     14, 14, 14, 14, 18, 26, 22, 30, // MOV moffs (14), MOVSB/W, CMPSB/W
-    4,  4,  11, 15, 12, 16, 15, 19, // TEST acc,imm, STOSB/W, LODSB/W, SCASB/W
+    4, 4, 11, 15, 12, 16, 15, 19, // TEST acc,imm, STOSB/W, LODSB/W, SCASB/W
     // 0xB0-0xBF: MOV r, imm
-    4,  4,  4,  4,  4,  4,  4,  4,  // MOV r8, imm8
-    4,  4,  4,  4,  4,  4,  4,  4,  // MOV r16, imm16
+    4, 4, 4, 4, 4, 4, 4, 4, // MOV r8, imm8
+    4, 4, 4, 4, 4, 4, 4, 4, // MOV r16, imm16
     // 0xC0-0xCF: Shifts (invalid), RET, LES, LDS, MOV r/m,imm, INT, IRET
-    0,  0,  24, 20, 24, 24, 4,  4,  // Invalid, RET imm, RET, LES, LDS, MOV r/m,imm
-    0,  0,  33, 34, 52, 51, 0,  44, // Invalid, RETF imm, RETF, INT 3, INT n, INTO, IRET
+    0, 0, 24, 20, 24, 24, 4, 4, // Invalid, RET imm, RET, LES, LDS, MOV r/m,imm
+    0, 0, 33, 34, 52, 51, 0, 44, // Invalid, RETF imm, RETF, INT 3, INT n, INTO, IRET
     // 0xD0-0xDF: Shifts, AAM, AAD, XLAT, ESC (FPU)
-    2,  2,  8,  8,  83, 60, 0,  11, // Shift by 1, Shift by CL, AAM, AAD, SALC, XLAT
-    0,  0,  0,  0,  0,  0,  0,  0,  // ESC (FPU) - not implemented
+    2, 2, 8, 8, 83, 60, 0, 11, // Shift by 1, Shift by CL, AAM, AAD, SALC, XLAT
+    0, 0, 0, 0, 0, 0, 0, 0, // ESC (FPU) - not implemented
     // 0xE0-0xEF: LOOP, IN, OUT, CALL, JMP
     // LOOP family uses not-taken timing as base (like Jcc), handlers add extra for taken
-    5,  5,  5,  6,  10, 14, 10, 14, // LOOPNE, LOOPE, LOOP, JCXZ, IN imm, OUT imm
-    23, 15, 15, 15, 8,  12, 8,  12, // CALL near, JMP near, JMP far, JMP short, IN DX, OUT DX
+    5, 5, 5, 6, 10, 14, 10, 14, // LOOPNE, LOOPE, LOOP, JCXZ, IN imm, OUT imm
+    23, 15, 15, 15, 8, 12, 8, 12, // CALL near, JMP near, JMP far, JMP short, IN DX, OUT DX
     // 0xF0-0xFF: LOCK, REP, HLT, CMC, Groups, Flags
-    0,  0,  0,  0,  2,  2,  5,  5,  // LOCK, INT1, REPNE, REP, HLT, CMC, Group F6, Group F7
-    2,  2,  2,  2,  2,  2,  3,  0,  // CLC, STC, CLI, STI, CLD, STD, Group FE, Group FF
+    0, 0, 0, 0, 2, 2, 5, 5, // LOCK, INT1, REPNE, REP, HLT, CMC, Group F6, Group F7
+    2, 2, 2, 2, 2, 2, 3, 0, // CLC, STC, CLI, STI, CLD, STD, Group FE, Group FF
 ];
 
 /// EA (Effective Address) calculation cycle costs
