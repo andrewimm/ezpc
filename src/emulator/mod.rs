@@ -3,8 +3,8 @@
 //! This module manages the overall emulator state, including CPU, memory,
 //! and rendering components.
 
-use crate::components::keyboard::Keyboard;
 use crate::components::pit::Pit;
+use crate::components::ppi::Ppi;
 use crate::cpu::Cpu;
 use crate::debugger::GdbDebugger;
 use crate::memory::MemoryBus;
@@ -46,10 +46,10 @@ impl EmulatorState {
             memory.load_rom(&rom);
         }
 
-        // Create keyboard queue and register keyboard controller
+        // Create keyboard queue and register PPI (which owns the keyboard)
         let scancode_queue = Arc::new(RwLock::new(VecDeque::new()));
-        let keyboard = Keyboard::new(scancode_queue.clone());
-        memory.register_io_device(Box::new(keyboard));
+        let ppi = Ppi::new(scancode_queue.clone());
+        memory.register_io_device(Box::new(ppi));
 
         // Create and register PIT
         let pit = Pit::new();

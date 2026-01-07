@@ -5,3 +5,4 @@ pub mod keyboard;
 pub mod mda;
 pub mod pic;
 pub mod pit;
+pub mod ppi;
