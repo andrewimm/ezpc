@@ -1,219 +1,264 @@
 //! Control flow instruction handlers (JMP, CALL, RET, Jcc, etc.)
+//!
+//! All control flow instructions that change IP non-sequentially must:
+//! 1. Flush the prefetch queue (since prefetched bytes are no longer valid)
+//! 2. Apply appropriate cycle timing
 
 use crate::cpu::decode::DecodedInstruction;
 use crate::cpu::execute::{arithmetic, stack};
 use crate::cpu::Cpu;
 use crate::memory::MemoryBus;
 
+/// Extra cycles when conditional jump is taken
+/// BASE_CYCLES has 4 (not taken), taken is 16, so we add 12
+const JCC_TAKEN_EXTRA_CYCLES: u16 = 12;
+
+/// Extra cycles when LOOP is taken
+/// BASE_CYCLES varies, handlers adjust as needed
+const LOOP_TAKEN_EXTRA_CYCLES: u16 = 12;
+
 /// JMP short - Jump with 8-bit relative offset
-/// Opcode: 0xEB
+/// Opcode: 0xEB (15 cycles)
 ///
 /// IP = IP + rel8 (sign-extended)
 pub fn jmp_short(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
-    // The offset is stored as a sign-extended value in operand.value
     let offset = instr.src.value as i16;
     cpu.ip = cpu.ip.wrapping_add(offset as u16);
+    cpu.flush_prefetch_queue();
 }
 
 /// JMP near - Jump with 16-bit relative offset
-/// Opcode: 0xE9
+/// Opcode: 0xE9 (15 cycles)
 ///
 /// IP = IP + rel16
 pub fn jmp_near(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
     let offset = instr.src.value as i16;
     cpu.ip = cpu.ip.wrapping_add(offset as u16);
+    cpu.flush_prefetch_queue();
 }
 
 /// JMP far - Far jump to absolute segment:offset
-/// Opcode: 0xEA
+/// Opcode: 0xEA (15 cycles)
 ///
 /// CS:IP = segment:offset (loaded from immediate operands)
 pub fn jmp_far(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
-    // src contains offset, dst contains segment
     let new_ip = instr.src.value;
     let new_cs = instr.dst.value;
     cpu.write_seg(1, new_cs); // CS
     cpu.ip = new_ip;
+    cpu.flush_prefetch_queue();
 }
 
 /// JZ/JE - Jump if zero/equal
-/// Opcode: 0x74
+/// Opcode: 0x74 (4 not taken, 16 taken)
 ///
 /// If ZF=1 then IP = IP + rel8
 pub fn jz(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
     if cpu.get_flag(Cpu::ZF) {
         let offset = instr.src.value as i16;
         cpu.ip = cpu.ip.wrapping_add(offset as u16);
+        cpu.flush_prefetch_queue();
+        cpu.current_instruction_cycles += JCC_TAKEN_EXTRA_CYCLES;
     }
 }
 
 /// JNZ/JNE - Jump if not zero/not equal
-/// Opcode: 0x75
+/// Opcode: 0x75 (4 not taken, 16 taken)
 ///
 /// If ZF=0 then IP = IP + rel8
 pub fn jnz(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
     if !cpu.get_flag(Cpu::ZF) {
         let offset = instr.src.value as i16;
         cpu.ip = cpu.ip.wrapping_add(offset as u16);
+        cpu.flush_prefetch_queue();
+        cpu.current_instruction_cycles += JCC_TAKEN_EXTRA_CYCLES;
     }
 }
 
 /// JS - Jump if sign
-/// Opcode: 0x78
+/// Opcode: 0x78 (4 not taken, 16 taken)
 ///
 /// If SF=1 then IP = IP + rel8
 pub fn js(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
     if cpu.get_flag(Cpu::SF) {
         let offset = instr.src.value as i16;
         cpu.ip = cpu.ip.wrapping_add(offset as u16);
+        cpu.flush_prefetch_queue();
+        cpu.current_instruction_cycles += JCC_TAKEN_EXTRA_CYCLES;
     }
 }
 
 /// JNS - Jump if not sign
-/// Opcode: 0x79
+/// Opcode: 0x79 (4 not taken, 16 taken)
 ///
 /// If SF=0 then IP = IP + rel8
 pub fn jns(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
     if !cpu.get_flag(Cpu::SF) {
         let offset = instr.src.value as i16;
         cpu.ip = cpu.ip.wrapping_add(offset as u16);
+        cpu.flush_prefetch_queue();
+        cpu.current_instruction_cycles += JCC_TAKEN_EXTRA_CYCLES;
     }
 }
 
 /// JC/JB/JNAE - Jump if carry/below/not above or equal
-/// Opcode: 0x72
+/// Opcode: 0x72 (4 not taken, 16 taken)
 ///
 /// If CF=1 then IP = IP + rel8
 pub fn jc(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
     if cpu.get_flag(Cpu::CF) {
         let offset = instr.src.value as i16;
         cpu.ip = cpu.ip.wrapping_add(offset as u16);
+        cpu.flush_prefetch_queue();
+        cpu.current_instruction_cycles += JCC_TAKEN_EXTRA_CYCLES;
     }
 }
 
 /// JNC/JAE/JNB - Jump if not carry/above or equal/not below
-/// Opcode: 0x73
+/// Opcode: 0x73 (4 not taken, 16 taken)
 ///
 /// If CF=0 then IP = IP + rel8
 pub fn jnc(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
     if !cpu.get_flag(Cpu::CF) {
         let offset = instr.src.value as i16;
         cpu.ip = cpu.ip.wrapping_add(offset as u16);
+        cpu.flush_prefetch_queue();
+        cpu.current_instruction_cycles += JCC_TAKEN_EXTRA_CYCLES;
     }
 }
 
 /// JO - Jump if overflow
-/// Opcode: 0x70
+/// Opcode: 0x70 (4 not taken, 16 taken)
 ///
 /// If OF=1 then IP = IP + rel8
 pub fn jo(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
     if cpu.get_flag(Cpu::OF) {
         let offset = instr.src.value as i16;
         cpu.ip = cpu.ip.wrapping_add(offset as u16);
+        cpu.flush_prefetch_queue();
+        cpu.current_instruction_cycles += JCC_TAKEN_EXTRA_CYCLES;
     }
 }
 
 /// JNO - Jump if not overflow
-/// Opcode: 0x71
+/// Opcode: 0x71 (4 not taken, 16 taken)
 ///
 /// If OF=0 then IP = IP + rel8
 pub fn jno(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
     if !cpu.get_flag(Cpu::OF) {
         let offset = instr.src.value as i16;
         cpu.ip = cpu.ip.wrapping_add(offset as u16);
+        cpu.flush_prefetch_queue();
+        cpu.current_instruction_cycles += JCC_TAKEN_EXTRA_CYCLES;
     }
 }
 
 /// JBE/JNA - Jump if below or equal/not above
-/// Opcode: 0x76
+/// Opcode: 0x76 (4 not taken, 16 taken)
 ///
 /// If CF=1 or ZF=1 then IP = IP + rel8
 pub fn jbe(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
     if cpu.get_flag(Cpu::CF) || cpu.get_flag(Cpu::ZF) {
         let offset = instr.src.value as i16;
         cpu.ip = cpu.ip.wrapping_add(offset as u16);
+        cpu.flush_prefetch_queue();
+        cpu.current_instruction_cycles += JCC_TAKEN_EXTRA_CYCLES;
     }
 }
 
 /// JA/JNBE - Jump if above/not below or equal
-/// Opcode: 0x77
+/// Opcode: 0x77 (4 not taken, 16 taken)
 ///
 /// If CF=0 and ZF=0 then IP = IP + rel8
 pub fn ja(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
     if !cpu.get_flag(Cpu::CF) && !cpu.get_flag(Cpu::ZF) {
         let offset = instr.src.value as i16;
         cpu.ip = cpu.ip.wrapping_add(offset as u16);
+        cpu.flush_prefetch_queue();
+        cpu.current_instruction_cycles += JCC_TAKEN_EXTRA_CYCLES;
     }
 }
 
 /// JP/JPE - Jump if parity/parity even
-/// Opcode: 0x7A
+/// Opcode: 0x7A (4 not taken, 16 taken)
 ///
 /// If PF=1 then IP = IP + rel8
 pub fn jp(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
     if cpu.get_flag(Cpu::PF) {
         let offset = instr.src.value as i16;
         cpu.ip = cpu.ip.wrapping_add(offset as u16);
+        cpu.flush_prefetch_queue();
+        cpu.current_instruction_cycles += JCC_TAKEN_EXTRA_CYCLES;
     }
 }
 
 /// JNP/JPO - Jump if not parity/parity odd
-/// Opcode: 0x7B
+/// Opcode: 0x7B (4 not taken, 16 taken)
 ///
 /// If PF=0 then IP = IP + rel8
 pub fn jnp(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
     if !cpu.get_flag(Cpu::PF) {
         let offset = instr.src.value as i16;
         cpu.ip = cpu.ip.wrapping_add(offset as u16);
+        cpu.flush_prefetch_queue();
+        cpu.current_instruction_cycles += JCC_TAKEN_EXTRA_CYCLES;
     }
 }
 
 /// JL/JNGE - Jump if less/not greater or equal
-/// Opcode: 0x7C
+/// Opcode: 0x7C (4 not taken, 16 taken)
 ///
 /// If SF != OF then IP = IP + rel8
 pub fn jl(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
     if cpu.get_flag(Cpu::SF) != cpu.get_flag(Cpu::OF) {
         let offset = instr.src.value as i16;
         cpu.ip = cpu.ip.wrapping_add(offset as u16);
+        cpu.flush_prefetch_queue();
+        cpu.current_instruction_cycles += JCC_TAKEN_EXTRA_CYCLES;
     }
 }
 
 /// JGE/JNL - Jump if greater or equal/not less
-/// Opcode: 0x7D
+/// Opcode: 0x7D (4 not taken, 16 taken)
 ///
 /// If SF = OF then IP = IP + rel8
 pub fn jge(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
     if cpu.get_flag(Cpu::SF) == cpu.get_flag(Cpu::OF) {
         let offset = instr.src.value as i16;
         cpu.ip = cpu.ip.wrapping_add(offset as u16);
+        cpu.flush_prefetch_queue();
+        cpu.current_instruction_cycles += JCC_TAKEN_EXTRA_CYCLES;
     }
 }
 
 /// JLE/JNG - Jump if less or equal/not greater
-/// Opcode: 0x7E
+/// Opcode: 0x7E (4 not taken, 16 taken)
 ///
 /// If ZF=1 or SF != OF then IP = IP + rel8
 pub fn jle(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
     if cpu.get_flag(Cpu::ZF) || (cpu.get_flag(Cpu::SF) != cpu.get_flag(Cpu::OF)) {
         let offset = instr.src.value as i16;
         cpu.ip = cpu.ip.wrapping_add(offset as u16);
+        cpu.flush_prefetch_queue();
+        cpu.current_instruction_cycles += JCC_TAKEN_EXTRA_CYCLES;
     }
 }
 
 /// JG/JNLE - Jump if greater/not less or equal
-/// Opcode: 0x7F
+/// Opcode: 0x7F (4 not taken, 16 taken)
 ///
 /// If ZF=0 and SF = OF then IP = IP + rel8
 pub fn jg(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
     if !cpu.get_flag(Cpu::ZF) && (cpu.get_flag(Cpu::SF) == cpu.get_flag(Cpu::OF)) {
         let offset = instr.src.value as i16;
         cpu.ip = cpu.ip.wrapping_add(offset as u16);
+        cpu.flush_prefetch_queue();
+        cpu.current_instruction_cycles += JCC_TAKEN_EXTRA_CYCLES;
     }
 }
 
 /// CALL near relative - Call procedure with 16-bit relative offset
-/// Opcode: 0xE8
+/// Opcode: 0xE8 (23 cycles)
 ///
 /// Stack operation: PUSH IP, then IP = IP + rel16
 pub fn call_near(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
@@ -226,10 +271,11 @@ pub fn call_near(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction)
     // Jump to target (IP + offset)
     let offset = instr.src.value as i16;
     cpu.ip = cpu.ip.wrapping_add(offset as u16);
+    cpu.flush_prefetch_queue();
 }
 
 /// CALL far direct - Call procedure in another segment
-/// Opcode: 0x9A
+/// Opcode: 0x9A (36 cycles)
 ///
 /// Stack operation: PUSH CS, PUSH IP, then CS:IP = new_seg:new_offset
 pub fn call_far(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
@@ -242,15 +288,15 @@ pub fn call_far(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) 
     push_word(cpu, mem, return_ip);
 
     // Load new CS:IP from operands
-    // src contains offset, dst contains segment
     let new_ip = instr.src.value;
     let new_cs = instr.dst.value;
     cpu.write_seg(1, new_cs); // CS
     cpu.ip = new_ip;
+    cpu.flush_prefetch_queue();
 }
 
 /// CALL r/m16 near indirect - Call procedure at address in register/memory
-/// Opcode: 0xFF /2
+/// Opcode: 0xFF /2 (16+EA cycles for memory, 16 for register)
 ///
 /// Stack operation: PUSH IP, then IP = r/m16
 pub fn call_rm16(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
@@ -265,6 +311,7 @@ pub fn call_rm16(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction)
 
     // Jump to target
     cpu.ip = target;
+    cpu.flush_prefetch_queue();
 }
 
 /// CALL m16:16 far indirect - Call far procedure at address in memory
@@ -317,6 +364,7 @@ pub fn call_m16_16(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstructio
     // Load new CS:IP
     cpu.write_seg(1, new_cs); // CS
     cpu.ip = new_ip;
+    cpu.flush_prefetch_queue();
 }
 
 /// Group handler for opcode 0xFF
@@ -338,10 +386,11 @@ pub fn group_ff(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) 
 }
 
 /// JMP r/m16 near indirect - Jump to address in register/memory
-/// Part of opcode 0xFF /4
+/// Part of opcode 0xFF /4 (11+EA cycles for memory, 11 for register)
 pub fn jmp_rm16(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
     let target = cpu.read_operand(mem, &instr.dst);
     cpu.ip = target;
+    cpu.flush_prefetch_queue();
 }
 
 /// JMP m16:16 far indirect - Jump to far address in memory
@@ -381,19 +430,21 @@ pub fn jmp_m16_16(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction
     // Load new CS:IP
     cpu.write_seg(1, new_cs); // CS
     cpu.ip = new_ip;
+    cpu.flush_prefetch_queue();
 }
 
 /// RET near - Return from near procedure
-/// Opcode: 0xC3
+/// Opcode: 0xC3 (20 cycles)
 ///
 /// Stack operation: IP = POP()
 pub fn ret_near(cpu: &mut Cpu, mem: &mut MemoryBus, _instr: &DecodedInstruction) {
     use super::stack::pop_word;
     cpu.ip = pop_word(cpu, mem);
+    cpu.flush_prefetch_queue();
 }
 
 /// RET near imm16 - Return from near procedure with stack cleanup
-/// Opcode: 0xC2
+/// Opcode: 0xC2 (24 cycles)
 ///
 /// Stack operation: IP = POP(), then SP = SP + imm16
 pub fn ret_near_imm(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
@@ -405,10 +456,11 @@ pub fn ret_near_imm(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstructi
     // Clean up stack by adding immediate to SP
     let cleanup = instr.src.value;
     cpu.regs[4] = cpu.regs[4].wrapping_add(cleanup); // SP
+    cpu.flush_prefetch_queue();
 }
 
 /// RETF - Return from far procedure
-/// Opcode: 0xCB
+/// Opcode: 0xCB (34 cycles)
 ///
 /// Stack operation: IP = POP(), CS = POP()
 pub fn ret_far(cpu: &mut Cpu, mem: &mut MemoryBus, _instr: &DecodedInstruction) {
@@ -418,10 +470,11 @@ pub fn ret_far(cpu: &mut Cpu, mem: &mut MemoryBus, _instr: &DecodedInstruction) 
     cpu.ip = pop_word(cpu, mem);
     let new_cs = pop_word(cpu, mem);
     cpu.write_seg(1, new_cs); // CS
+    cpu.flush_prefetch_queue();
 }
 
 /// RETF imm16 - Return from far procedure with stack cleanup
-/// Opcode: 0xCA
+/// Opcode: 0xCA (33 cycles)
 ///
 /// Stack operation: IP = POP(), CS = POP(), then SP = SP + imm16
 pub fn ret_far_imm(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
@@ -435,10 +488,11 @@ pub fn ret_far_imm(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstructio
     // Clean up stack by adding immediate to SP
     let cleanup = instr.src.value;
     cpu.regs[4] = cpu.regs[4].wrapping_add(cleanup); // SP
+    cpu.flush_prefetch_queue();
 }
 
 /// LOOP - Loop while CX not zero
-/// Opcode: 0xE2
+/// Opcode: 0xE2 (5 not taken, 17 taken)
 ///
 /// Decrements CX and jumps if CX != 0
 /// If CX-1 != 0 then IP = IP + rel8
@@ -450,11 +504,13 @@ pub fn loop_rel8(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction
     if cpu.regs[1] != 0 {
         let offset = instr.src.value as i16;
         cpu.ip = cpu.ip.wrapping_add(offset as u16);
+        cpu.flush_prefetch_queue();
+        cpu.current_instruction_cycles += LOOP_TAKEN_EXTRA_CYCLES;
     }
 }
 
 /// LOOPE/LOOPZ - Loop while CX not zero and ZF=1
-/// Opcode: 0xE1
+/// Opcode: 0xE1 (5 not taken, 18 taken)
 ///
 /// Decrements CX and jumps if CX != 0 AND ZF = 1
 /// If CX-1 != 0 and ZF=1 then IP = IP + rel8
@@ -466,11 +522,13 @@ pub fn loope(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
     if cpu.regs[1] != 0 && cpu.get_flag(Cpu::ZF) {
         let offset = instr.src.value as i16;
         cpu.ip = cpu.ip.wrapping_add(offset as u16);
+        cpu.flush_prefetch_queue();
+        cpu.current_instruction_cycles += LOOP_TAKEN_EXTRA_CYCLES + 1; // LOOPE is 18 vs 17 for LOOP
     }
 }
 
 /// LOOPNE/LOOPNZ - Loop while CX not zero and ZF=0
-/// Opcode: 0xE0
+/// Opcode: 0xE0 (5 not taken, 19 taken)
 ///
 /// Decrements CX and jumps if CX != 0 AND ZF = 0
 /// If CX-1 != 0 and ZF=0 then IP = IP + rel8
@@ -482,11 +540,13 @@ pub fn loopne(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
     if cpu.regs[1] != 0 && !cpu.get_flag(Cpu::ZF) {
         let offset = instr.src.value as i16;
         cpu.ip = cpu.ip.wrapping_add(offset as u16);
+        cpu.flush_prefetch_queue();
+        cpu.current_instruction_cycles += LOOP_TAKEN_EXTRA_CYCLES + 2; // LOOPNE is 19 vs 17 for LOOP
     }
 }
 
 /// JCXZ - Jump if CX is zero
-/// Opcode: 0xE3
+/// Opcode: 0xE3 (6 not taken, 18 taken)
 ///
 /// Jumps if CX = 0 (does not modify CX)
 /// If CX=0 then IP = IP + rel8
@@ -495,6 +555,8 @@ pub fn jcxz(cpu: &mut Cpu, _mem: &mut MemoryBus, instr: &DecodedInstruction) {
     if cpu.regs[1] == 0 {
         let offset = instr.src.value as i16;
         cpu.ip = cpu.ip.wrapping_add(offset as u16);
+        cpu.flush_prefetch_queue();
+        cpu.current_instruction_cycles += LOOP_TAKEN_EXTRA_CYCLES;
     }
 }
 
@@ -533,6 +595,7 @@ pub(crate) fn enter_interrupt(cpu: &mut Cpu, mem: &mut MemoryBus, vector: u8) {
     // Set new CS:IP
     cpu.write_seg(1, new_cs); // CS
     cpu.ip = new_ip;
+    cpu.flush_prefetch_queue();
 }
 
 /// INT n - Software interrupt with 8-bit interrupt number
@@ -581,7 +644,7 @@ pub fn int3(cpu: &mut Cpu, mem: &mut MemoryBus, _instr: &DecodedInstruction) {
 }
 
 /// IRET - Return from interrupt
-/// Opcode: 0xCF
+/// Opcode: 0xCF (44 cycles)
 ///
 /// Stack operation: IP = POP(), CS = POP(), FLAGS = POP()
 pub fn iret(cpu: &mut Cpu, mem: &mut MemoryBus, _instr: &DecodedInstruction) {
@@ -595,4 +658,5 @@ pub fn iret(cpu: &mut Cpu, mem: &mut MemoryBus, _instr: &DecodedInstruction) {
     // Pop and restore FLAGS
     let flags = pop_word(cpu, mem);
     cpu.set_flags(flags);
+    cpu.flush_prefetch_queue();
 }

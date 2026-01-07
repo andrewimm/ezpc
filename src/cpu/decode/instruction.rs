@@ -30,6 +30,12 @@ pub struct DecodedInstruction {
 
     /// Function pointer to the instruction handler
     pub handler: InstructionHandler,
+
+    /// Base cycles for this instruction (from timing table)
+    pub base_cycles: u8,
+
+    /// EA (Effective Address) calculation cycles for memory operands
+    pub ea_cycles: u8,
 }
 
 impl DecodedInstruction {
@@ -41,6 +47,8 @@ impl DecodedInstruction {
             src: Operand::none(),
             length: 1, // Minimum length is 1 (just the opcode)
             handler,
+            base_cycles: 0,
+            ea_cycles: 0,
         }
     }
 
@@ -60,6 +68,34 @@ impl DecodedInstruction {
     pub fn with_length(mut self, length: u8) -> Self {
         self.length = length;
         self
+    }
+
+    /// Set the base cycles for this instruction
+    pub fn with_base_cycles(mut self, cycles: u8) -> Self {
+        self.base_cycles = cycles;
+        self
+    }
+
+    /// Set the EA calculation cycles for this instruction
+    pub fn with_ea_cycles(mut self, cycles: u8) -> Self {
+        self.ea_cycles = cycles;
+        self
+    }
+
+    /// Set both base and EA cycles
+    pub fn with_timing(mut self, base_cycles: u8, ea_cycles: u8) -> Self {
+        self.base_cycles = base_cycles;
+        self.ea_cycles = ea_cycles;
+        self
+    }
+
+    /// Get total cycles for this instruction (base + EA)
+    ///
+    /// Note: This doesn't include transfer penalties or segment override costs,
+    /// which must be added by the handler or step() function.
+    #[inline(always)]
+    pub fn total_cycles(&self) -> u8 {
+        self.base_cycles.saturating_add(self.ea_cycles)
     }
 
     /// Check if instruction has a destination operand
@@ -88,6 +124,8 @@ impl std::fmt::Debug for DecodedInstruction {
             .field("src", &self.src)
             .field("length", &self.length)
             .field("handler", &"<fn>")
+            .field("base_cycles", &self.base_cycles)
+            .field("ea_cycles", &self.ea_cycles)
             .finish()
     }
 }

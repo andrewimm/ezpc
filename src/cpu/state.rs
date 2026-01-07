@@ -993,6 +993,18 @@ impl Cpu {
         }
     }
 
+    // === Prefetch Queue Methods ===
+
+    /// Flush the prefetch queue
+    ///
+    /// Called on control flow changes (jumps, calls, returns) since the prefetched
+    /// bytes are no longer valid after IP changes non-sequentially.
+    #[inline(always)]
+    pub fn flush_prefetch_queue(&mut self) {
+        self.prefetch_len = 0;
+        self.prefetch_cycles = 0;
+    }
+
     // === Execution Methods ===
 
     /// Execute one instruction (tier 1 execution)
@@ -1006,9 +1018,10 @@ impl Cpu {
     ///
     /// When halted, the CPU skips instruction execution but still checks for interrupts.
     ///
-    /// Returns the number of CPU cycles consumed (placeholder: always 4 for now).
+    /// Returns the number of CPU cycles consumed.
     pub fn step(&mut self, mem: &mut MemoryBus) -> u16 {
         use crate::cpu::tier1::DISPATCH_TABLE;
+        use crate::cpu::timing::SEGMENT_OVERRIDE_CYCLES;
 
         // If CPU is halted, skip instruction execution but check for interrupts
         if self.halted {
@@ -1025,6 +1038,9 @@ impl Cpu {
 
         let cs = self.read_seg(1);
 
+        // Track if segment override was used (for timing penalty)
+        let mut had_segment_override = false;
+
         // Execute instruction, looping while prefix handlers set state
         loop {
             // Remember if we had prefix state set before this instruction
@@ -1037,6 +1053,11 @@ impl Cpu {
 
             let handler = DISPATCH_TABLE[opcode as usize];
             let instr = self.decode_instruction_t1(mem, opcode, handler);
+
+            // Apply base cycles and EA cycles from decoded instruction
+            self.current_instruction_cycles += instr.total_cycles() as u16;
+
+            // Execute the instruction (handler may add extra cycles for variable timing)
             instr.execute(self, mem);
 
             // If a prefix was set by this instruction, continue to fetch next byte
@@ -1045,6 +1066,16 @@ impl Cpu {
             {
                 break;
             }
+
+            // Track that we processed a segment override prefix
+            if self.segment_override != had_seg_override {
+                had_segment_override = true;
+            }
+        }
+
+        // Apply segment override penalty (+2 cycles)
+        if had_segment_override {
+            self.current_instruction_cycles += SEGMENT_OVERRIDE_CYCLES as u16;
         }
 
         // After instruction execution, check for hardware interrupts
@@ -1053,9 +1084,8 @@ impl Cpu {
         // Accumulate instruction cycles into total cycles
         self.total_cycles += self.current_instruction_cycles as u64;
 
-        // TODO: Return actual cycle count from instruction
-        // For now, return placeholder value
-        4
+        // Return actual cycle count
+        self.current_instruction_cycles
     }
 
     /// Check and handle hardware interrupts from the PIC

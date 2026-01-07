@@ -43,8 +43,10 @@ impl CpuHarness {
     }
 
     /// Execute one instruction
-    pub fn step(&mut self) {
-        self.cpu.step(&mut self.mem);
+    ///
+    /// Returns the number of cycles consumed by the instruction.
+    pub fn step(&mut self) -> u16 {
+        self.cpu.step(&mut self.mem)
     }
 
     /// Execute multiple instructions

@@ -6,6 +6,7 @@
 
 use crate::cpu::decode::instruction::DecodedInstruction;
 use crate::cpu::decode::operands::Operand;
+use crate::cpu::timing::{calculate_total_ea_cycles, BASE_CYCLES};
 use crate::cpu::Cpu;
 use crate::memory::MemoryBus;
 
@@ -817,7 +818,11 @@ impl Cpu {
             }
         }
 
-        instr
+        // Calculate timing for this instruction
+        let base_cycles = BASE_CYCLES[opcode as usize];
+        let ea_cycles = calculate_total_ea_cycles(&instr.dst, &instr.src);
+
+        instr.with_timing(base_cycles, ea_cycles)
     }
 
     /// Helper: Decode ModR/M byte and return (dst, src, length)

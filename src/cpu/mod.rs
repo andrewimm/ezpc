@@ -10,6 +10,7 @@ pub mod execute;
 pub mod harness;
 pub mod state;
 pub mod tier1;
+pub mod timing;
 
 pub use harness::CpuHarness;
 pub use state::Cpu;
