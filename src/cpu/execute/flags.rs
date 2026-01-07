@@ -27,6 +27,17 @@ pub fn stc(cpu: &mut Cpu, _mem: &mut MemoryBus, _instr: &DecodedInstruction) {
     cpu.set_flag(Cpu::CF, true);
 }
 
+/// Handler for CMC (0xF5) - Complement Carry Flag
+///
+/// Complements (inverts) the carry flag (CF).
+/// If CF is 0, it becomes 1. If CF is 1, it becomes 0.
+/// Takes 2 cycles on the 8088.
+#[inline(always)]
+pub fn cmc(cpu: &mut Cpu, _mem: &mut MemoryBus, _instr: &DecodedInstruction) {
+    let current_cf = cpu.get_flag(Cpu::CF);
+    cpu.set_flag(Cpu::CF, !current_cf);
+}
+
 /// Handler for CLI (0xFA) - Clear Interrupt Flag
 ///
 /// Clears the interrupt enable flag (IF) to 0.

@@ -271,7 +271,7 @@ pub static DISPATCH_TABLE: [InstructionHandler; 256] = [
     prefix::repne,          // 0xF2: REPNE/REPNZ prefix
     prefix::rep,            // 0xF3: REP/REPE/REPZ prefix
     hlt,                    // 0xF4: HLT
-    invalid_opcode,         // 0xF5: CMC (not implemented yet)
+    flags::cmc,             // 0xF5: CMC - Complement Carry Flag
     arithmetic::group_f6,   // 0xF6: TEST/NOT/NEG/MUL/IMUL/DIV/IDIV r/m8 (group)
     arithmetic::group_f7,   // 0xF7: TEST/NOT/NEG/MUL/IMUL/DIV/IDIV r/m16 (group)
     flags::clc,             // 0xF8: CLC - Clear Carry Flag

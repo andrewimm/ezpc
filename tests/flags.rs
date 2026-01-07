@@ -36,6 +36,25 @@ fn test_stc() {
 }
 
 #[test]
+fn test_cmc() {
+    let mut harness = CpuHarness::new();
+    // CMC, CMC
+    harness.load_program(&[0xF5, 0xF5], 0);
+
+    // Start with CF=0
+    harness.cpu.set_flag(Cpu::CF, false);
+
+    // First CMC: 0 -> 1
+    harness.step();
+    assert!(harness.cpu.get_flag(Cpu::CF));
+
+    // Second CMC: 1 -> 0
+    harness.step();
+    assert!(!harness.cpu.get_flag(Cpu::CF));
+    assert_eq!(harness.cpu.ip, 2);
+}
+
+#[test]
 fn test_cli() {
     let mut harness = CpuHarness::new();
     // Set interrupt flag first
