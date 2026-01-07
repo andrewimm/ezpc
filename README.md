@@ -10,25 +10,38 @@ This project serves as an exploration of what's possible with AI-assisted develo
 
 ## Current Status
 
-The emulator is in active development with the CPU core implementation underway. Implemented so far:
+**The emulator now successfully POSTs and boots IBM Cassette BASIC!** 🎉
 
-### CPU Instructions
-- **Data Transfer**: MOV, XCHG, LEA, PUSH, POP (registers and segments)
-- **Arithmetic**: ADD, ADC, SUB, SBB, INC, DEC, CMP, DAA, DAS
+The CPU core and essential peripherals are functional, allowing real IBM PC BIOS to execute.
+
+### CPU Instructions (Complete 8088 Instruction Set)
+- **Data Transfer**: MOV, XCHG, LEA, LDS, LES, XLAT, PUSH, POP (registers and segments)
+- **Arithmetic**: ADD, ADC, SUB, SBB, INC, DEC, CMP, NEG, MUL, IMUL, DIV, IDIV, AAA, AAS, AAM, AAD, DAA, DAS, CBW, CWD
 - **Logic**: AND, OR, XOR, TEST, NOT
-- **Control Flow**: JMP, CALL, RET (near/far), conditional jumps (Jcc), LOOP family
+- **Shift/Rotate**: SHL, SHR, SAR, ROL, ROR, RCL, RCR
+- **Control Flow**: JMP, CALL, RET (near/far), INT, IRET, conditional jumps (Jcc), LOOP family
 - **String Operations**: MOVS, STOS, LODS, CMPS, SCAS (byte/word with REP/REPE/REPNE)
-- **Flag Manipulation**: CLC, STC, CLI, STI, CLD, STD, PUSHF, POPF, SAHF, LAHF
+- **Flag Manipulation**: CLC, STC, CMC, CLI, STI, CLD, STD, PUSHF, POPF, SAHF, LAHF
 - **I/O**: IN, OUT (immediate and DX port)
 - **Prefixes**: Segment overrides (ES, CS, SS, DS), REP, REPE, REPNE
+- **System**: HLT, NOP
+
+### Hardware Components
+- **8088 CPU**: Full instruction set with lazy flag evaluation
+- **MDA (Monochrome Display Adapter)**: 80x25 text mode with 720x350 graphical output
+- **8259 PIC (Programmable Interrupt Controller)**: Edge-triggered interrupts, priority handling, masking
+- **8253 PIT (Programmable Interval Timer)**: Timer channel 0 with IRQ0 generation
+- **8255 PPI (Programmable Peripheral Interface)**: Keyboard input, DIP switches, reset control
+- **Memory**: 64KB RAM, 64KB ROM/BIOS, MDA VRAM at 0xB0000
 
 ### Core Features
 - Lazy flag evaluation for performance
 - ModR/M decoding with all addressing modes
 - Segment:offset memory addressing
+- Hardware interrupt handling via PIC
 - REP prefix support with conditional termination
 - **GDB remote debugging** over Unix socket
-- Comprehensive test suite (320+ tests)
+- Comprehensive test suite (479+ tests)
 
 ## Architecture
 
@@ -134,8 +147,17 @@ cargo run -- --help
   - `socket.rs` - Non-blocking Unix socket I/O thread
   - `commands.rs` - GDB command handlers (g, m, s, c, Z, etc.)
   - `mod.rs` - Debugger core and state management
-- `src/components/` - Hardware components (PIC, PIT, keyboard, MDA)
+- `src/components/` - Hardware components
+  - `mda.rs` - Monochrome Display Adapter with font ROM
+  - `pic.rs` - 8259 Programmable Interrupt Controller
+  - `pit.rs` - 8253 Programmable Interval Timer
+  - `ppi.rs` - 8255 Programmable Peripheral Interface
+  - `keyboard.rs` - XT keyboard with scancode generation
+  - `dma.rs` - 8237 DMA Controller (stub)
 - `src/emulator/` - Emulator state and coordination
+  - `graphics.rs` - WGPU-based framebuffer rendering
+  - `scancode.rs` - PC XT scancode translation
+- `src/memory.rs` - Memory bus with RAM/ROM/VRAM
 - `tests/` - Comprehensive test suite organized by instruction type
 
 ## Development Approach
