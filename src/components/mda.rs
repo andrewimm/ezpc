@@ -114,14 +114,16 @@ impl Mda {
     pub fn read_u8(&mut self, port: u16) -> u8 {
         match port {
             0x3BA => {
-                // Status register
-                // Bit 0: Horizontal retrace (not implemented)
-                // Bit 3: Vertical retrace (toggle for now)
-                if (self.cycle_count >> 10) & 1 == 0 {
-                    0x08
-                } else {
-                    0x00
-                }
+                // Status register (Input Status Register 1)
+                // Bit 0: Horizontal retrace (1 = in retrace period)
+                // Bit 3: Vertical retrace (1 = in vertical retrace)
+                //
+                // Toggle both bits to simulate retrace periods.
+                // Horizontal retrace happens ~31.5kHz, vertical ~50-70Hz.
+                // Use different bit shifts to get appropriate frequencies.
+                let hretrace = ((self.cycle_count >> 7) & 1) as u8; // ~37kHz at 4.77MHz
+                let vretrace = ((self.cycle_count >> 14) & 1) as u8; // ~290Hz at 4.77MHz
+                hretrace | (vretrace << 3)
             }
             _ => {
                 // Other ports not implemented yet
