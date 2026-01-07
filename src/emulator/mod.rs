@@ -109,6 +109,11 @@ impl EmulatorState {
 
             // Check for breakpoints and single-step after each instruction
             if let Some(ref mut debugger) = self.debugger {
+                // Check for interrupt request (Ctrl-C from GDB)
+                if debugger.check_interrupt() {
+                    break;
+                }
+
                 if debugger.check_breakpoint(&self.cpu) {
                     debugger.pause();
                     debugger.send_halt_reason();

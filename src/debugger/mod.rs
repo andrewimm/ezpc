@@ -33,6 +33,9 @@ pub struct GdbDebugger {
     /// Outgoing packets to GDB client
     outgoing_packets: Arc<RwLock<VecDeque<String>>>,
 
+    /// Interrupt request flag (set when GDB sends 0x03)
+    interrupt_requested: Arc<RwLock<bool>>,
+
     /// Socket listener thread handle
     _socket_thread: JoinHandle<()>,
 
@@ -51,16 +54,19 @@ impl GdbDebugger {
     pub fn new(socket_path: &str) -> Self {
         let incoming = Arc::new(RwLock::new(VecDeque::new()));
         let outgoing = Arc::new(RwLock::new(VecDeque::new()));
+        let interrupt_requested = Arc::new(RwLock::new(false));
 
         let socket_thread = socket::spawn_socket_listener(
             socket_path.to_string(),
             incoming.clone(),
             outgoing.clone(),
+            interrupt_requested.clone(),
         );
 
         Self {
             incoming_packets: incoming,
             outgoing_packets: outgoing,
+            interrupt_requested,
             _socket_thread: socket_thread,
             state: DebugState::Paused, // Start paused, waiting for GDB
             breakpoints: Vec::new(),
@@ -165,6 +171,29 @@ impl GdbDebugger {
         if self.state == DebugState::SingleStep {
             self.pause();
             self.send_halt_reason();
+        }
+    }
+
+    /// Check if GDB sent an interrupt (Ctrl-C) and handle it
+    pub fn check_interrupt(&mut self) -> bool {
+        // Check and clear the interrupt flag
+        let interrupted = {
+            let mut flag = self.interrupt_requested.write().unwrap();
+            if *flag {
+                *flag = false; // Clear the flag
+                true
+            } else {
+                false
+            }
+        }; // Lock is dropped here
+
+        // If interrupted, pause and send signal
+        if interrupted {
+            self.pause();
+            self.send_packet("S02"); // Signal 2 = SIGINT
+            true
+        } else {
+            false
         }
     }
 }

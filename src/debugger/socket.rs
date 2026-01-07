@@ -19,6 +19,7 @@ pub fn spawn_socket_listener(
     socket_path: String,
     incoming: Arc<RwLock<VecDeque<String>>>,
     outgoing: Arc<RwLock<VecDeque<String>>>,
+    interrupt_requested: Arc<RwLock<bool>>,
 ) -> JoinHandle<()> {
     thread::spawn(move || {
         // Remove old socket file if it exists
@@ -42,7 +43,12 @@ pub fn spawn_socket_listener(
                     println!("GDB client connected");
 
                     // Handle this connection
-                    if let Err(e) = handle_connection(stream, incoming.clone(), outgoing.clone()) {
+                    if let Err(e) = handle_connection(
+                        stream,
+                        incoming.clone(),
+                        outgoing.clone(),
+                        interrupt_requested.clone(),
+                    ) {
                         eprintln!("GDB connection error: {}", e);
                     }
 
@@ -62,6 +68,7 @@ fn handle_connection(
     mut stream: UnixStream,
     incoming: Arc<RwLock<VecDeque<String>>>,
     outgoing: Arc<RwLock<VecDeque<String>>>,
+    interrupt_requested: Arc<RwLock<bool>>,
 ) -> std::io::Result<()> {
     // Set non-blocking mode
     stream.set_nonblocking(true)?;
@@ -102,6 +109,14 @@ fn handle_connection(
                 while !read_buffer.is_empty() && (read_buffer[0] == b'+' || read_buffer[0] == b'-')
                 {
                     read_buffer.remove(0);
+                }
+
+                // Handle interrupt signal (0x03 = Ctrl-C from GDB)
+                while !read_buffer.is_empty() && read_buffer[0] == 0x03 {
+                    read_buffer.remove(0);
+                    // Set interrupt flag
+                    *interrupt_requested.write().unwrap() = true;
+                    eprintln!("GDB: Interrupt signal received (0x03)");
                 }
             }
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
