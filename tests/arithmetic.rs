@@ -1880,6 +1880,238 @@ fn test_div_r16_large_dividend() {
 }
 
 #[test]
+fn test_neg_r8_positive() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 5; NEG AL
+    // Expected: 0 - 5 = -5 = 0xFB
+    harness.load_program(&[0xB0, 0x05, 0xF6, 0xD8], 0);
+
+    harness.step(); // MOV AL, 5
+    harness.step(); // NEG AL
+
+    assert_eq!(harness.cpu.read_reg8(0), 0xFB); // AL = -5 (0xFB)
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // CF set (source != 0)
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::OF)); // OF clear
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::SF)); // SF set (negative result)
+}
+
+#[test]
+fn test_neg_r8_zero() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0; NEG AL
+    // Expected: 0 - 0 = 0
+    harness.load_program(&[0xB0, 0x00, 0xF6, 0xD8], 0);
+
+    harness.step(); // MOV AL, 0
+    harness.step(); // NEG AL
+
+    assert_eq!(harness.cpu.read_reg8(0), 0); // AL = 0
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // CF clear (source == 0)
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::ZF)); // ZF set
+}
+
+#[test]
+fn test_neg_r8_overflow() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 0x80; NEG AL (negating -128 causes overflow)
+    // Expected: 0 - 0x80 = 0x80 (still -128 due to overflow)
+    harness.load_program(&[0xB0, 0x80, 0xF6, 0xD8], 0);
+
+    harness.step(); // MOV AL, 0x80
+    harness.step(); // NEG AL
+
+    assert_eq!(harness.cpu.read_reg8(0), 0x80); // AL = 0x80
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // CF set
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::OF)); // OF set (overflow)
+}
+
+#[test]
+fn test_neg_r16_positive() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 1000; NEG AX
+    // Expected: 0 - 1000 = -1000 = 0xFC18
+    harness.load_program(&[0xB8, 0xE8, 0x03, 0xF7, 0xD8], 0);
+
+    harness.step(); // MOV AX, 1000
+    harness.step(); // NEG AX
+
+    assert_eq!(harness.cpu.regs[0], 0xFC18); // AX = -1000
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // CF set
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::SF)); // SF set
+}
+
+#[test]
+fn test_imul_r8_positive() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, 5; MOV BL, 3; IMUL BL
+    // Expected: 5 * 3 = 15
+    harness.load_program(&[0xB0, 0x05, 0xB3, 0x03, 0xF6, 0xEB], 0);
+
+    harness.step(); // MOV AL, 5
+    harness.step(); // MOV BL, 3
+    harness.step(); // IMUL BL
+
+    assert_eq!(harness.cpu.regs[0], 15); // AX = 15
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // CF clear (no overflow)
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::OF)); // OF clear
+}
+
+#[test]
+fn test_imul_r8_negative() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, -5 (0xFB); MOV BL, 3; IMUL BL
+    // Expected: -5 * 3 = -15 = 0xFFF1
+    harness.load_program(&[0xB0, 0xFB, 0xB3, 0x03, 0xF6, 0xEB], 0);
+
+    harness.step(); // MOV AL, -5
+    harness.step(); // MOV BL, 3
+    harness.step(); // IMUL BL
+
+    assert_eq!(harness.cpu.regs[0] as i16, -15); // AX = -15
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // CF clear (fits in AL)
+}
+
+#[test]
+fn test_imul_r8_overflow() {
+    let mut harness = CpuHarness::new();
+    // MOV AL, -64 (0xC0); MOV BL, 3; IMUL BL
+    // Expected: -64 * 3 = -192 = 0xFF40 (doesn't fit in signed AL)
+    harness.load_program(&[0xB0, 0xC0, 0xB3, 0x03, 0xF6, 0xEB], 0);
+
+    harness.step(); // MOV AL, -64
+    harness.step(); // MOV BL, 3
+    harness.step(); // IMUL BL
+
+    assert_eq!(harness.cpu.regs[0] as i16, -192); // AX = -192
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // CF set (overflow)
+    assert!(harness.cpu.get_flag(ezpc::cpu::Cpu::OF)); // OF set
+}
+
+#[test]
+fn test_imul_r16_positive() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 100; MOV BX, 200; IMUL BX
+    // Expected: 100 * 200 = 20000 = 0x4E20
+    harness.load_program(&[0xB8, 0x64, 0x00, 0xBB, 0xC8, 0x00, 0xF7, 0xEB], 0);
+
+    harness.step(); // MOV AX, 100
+    harness.step(); // MOV BX, 200
+    harness.step(); // IMUL BX
+
+    assert_eq!(harness.cpu.regs[0], 20000); // AX = 20000
+    assert_eq!(harness.cpu.regs[2], 0); // DX = 0
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // CF clear
+}
+
+#[test]
+fn test_imul_r16_negative() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, -100 (0xFF9C); MOV BX, 50; IMUL BX
+    // Expected: -100 * 50 = -5000 = 0xEC78
+    harness.load_program(&[0xB8, 0x9C, 0xFF, 0xBB, 0x32, 0x00, 0xF7, 0xEB], 0);
+
+    harness.step(); // MOV AX, -100
+    harness.step(); // MOV BX, 50
+    harness.step(); // IMUL BX
+
+    assert_eq!(harness.cpu.regs[0] as i16, -5000); // AX = -5000
+    assert!(!harness.cpu.get_flag(ezpc::cpu::Cpu::CF)); // CF clear (fits in AX)
+}
+
+#[test]
+fn test_idiv_r8_positive() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 100; MOV BL, 7; IDIV BL
+    // Expected: 100 ÷ 7 = 14 remainder 2
+    harness.load_program(&[0xB8, 0x64, 0x00, 0xB3, 0x07, 0xF6, 0xFB], 0);
+
+    harness.step(); // MOV AX, 100
+    harness.step(); // MOV BL, 7
+    harness.step(); // IDIV BL
+
+    assert_eq!(harness.cpu.read_reg8(0), 14); // AL = 14 (quotient)
+    assert_eq!(harness.cpu.read_reg8(4), 2); // AH = 2 (remainder)
+}
+
+#[test]
+fn test_idiv_r8_negative_dividend() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, -100 (0xFF9C); MOV BL, 7; IDIV BL
+    // Expected: -100 ÷ 7 = -14 remainder -2
+    harness.load_program(&[0xB8, 0x9C, 0xFF, 0xB3, 0x07, 0xF6, 0xFB], 0);
+
+    harness.step(); // MOV AX, -100
+    harness.step(); // MOV BL, 7
+    harness.step(); // IDIV BL
+
+    assert_eq!(harness.cpu.read_reg8(0) as i8, -14); // AL = -14 (quotient)
+    assert_eq!(harness.cpu.read_reg8(4) as i8, -2); // AH = -2 (remainder)
+}
+
+#[test]
+fn test_idiv_r8_negative_divisor() {
+    let mut harness = CpuHarness::new();
+    // MOV AX, 100; MOV BL, -7 (0xF9); IDIV BL
+    // Expected: 100 ÷ -7 = -14 remainder 2
+    harness.load_program(&[0xB8, 0x64, 0x00, 0xB3, 0xF9, 0xF6, 0xFB], 0);
+
+    harness.step(); // MOV AX, 100
+    harness.step(); // MOV BL, -7
+    harness.step(); // IDIV BL
+
+    assert_eq!(harness.cpu.read_reg8(0) as i8, -14); // AL = -14 (quotient)
+    assert_eq!(harness.cpu.read_reg8(4) as i8, 2); // AH = 2 (remainder)
+}
+
+#[test]
+fn test_idiv_r16_positive() {
+    let mut harness = CpuHarness::new();
+    // MOV DX, 0; MOV AX, 1000; MOV BX, 13; IDIV BX
+    // Expected: 1000 ÷ 13 = 76 remainder 12
+    harness.load_program(
+        &[
+            0xBA, 0x00, 0x00, // MOV DX, 0
+            0xB8, 0xE8, 0x03, // MOV AX, 1000
+            0xBB, 0x0D, 0x00, // MOV BX, 13
+            0xF7, 0xFB, // IDIV BX
+        ],
+        0,
+    );
+
+    harness.step(); // MOV DX, 0
+    harness.step(); // MOV AX, 1000
+    harness.step(); // MOV BX, 13
+    harness.step(); // IDIV BX
+
+    assert_eq!(harness.cpu.regs[0] as i16, 76); // AX = 76 (quotient)
+    assert_eq!(harness.cpu.regs[2] as i16, 12); // DX = 12 (remainder)
+}
+
+#[test]
+fn test_idiv_r16_negative() {
+    let mut harness = CpuHarness::new();
+    // MOV DX, 0xFFFF; MOV AX, 0xFC18 (-1000); MOV BX, 13; IDIV BX
+    // Expected: -1000 ÷ 13 = -76 remainder -12
+    harness.load_program(
+        &[
+            0xBA, 0xFF, 0xFF, // MOV DX, 0xFFFF
+            0xB8, 0x18, 0xFC, // MOV AX, 0xFC18 (-1000)
+            0xBB, 0x0D, 0x00, // MOV BX, 13
+            0xF7, 0xFB, // IDIV BX
+        ],
+        0,
+    );
+
+    harness.step(); // MOV DX, 0xFFFF
+    harness.step(); // MOV AX, -1000
+    harness.step(); // MOV BX, 13
+    harness.step(); // IDIV BX
+
+    assert_eq!(harness.cpu.regs[0] as i16, -76); // AX = -76 (quotient)
+    assert_eq!(harness.cpu.regs[2] as i16, -12); // DX = -12 (remainder)
+}
+
+#[test]
 fn test_not_r8() {
     let mut harness = CpuHarness::new();
     // NOT AL: 0x55 -> 0xAA

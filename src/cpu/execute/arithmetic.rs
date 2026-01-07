@@ -1112,6 +1112,163 @@ pub fn div(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
     // Flags are undefined after DIV - we don't modify them
 }
 
+/// NEG r/m - Two's Complement Negation
+/// Opcodes: 0xF6 /3 (8-bit), 0xF7 /3 (16-bit)
+///
+/// Subtracts the operand from zero (replaces with two's complement).
+/// Equivalent to: operand = 0 - operand
+///
+/// Flags: CF (set if source != 0), OF, SF, ZF, PF, AF
+pub fn neg(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    let operand_value = cpu.read_operand(mem, &instr.dst);
+    let is_byte = instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
+
+    if is_byte {
+        // 8-bit negate: 0 - value
+        let value = operand_value as u8;
+        let result = (0u32).wrapping_sub(value as u32);
+
+        cpu.write_operand(mem, &instr.dst, (result & 0xFF) as u16);
+
+        // Set OF and AF using the same logic as SUB (0 - value)
+        cpu.set_sub8_of_af(0, value, result);
+
+        // Set SF, ZF, PF using lazy flags
+        cpu.set_lazy_flags(result, FlagOp::Sub8);
+
+        // CF is set if source operand is not zero (special case for NEG)
+        cpu.set_flag(Cpu::CF, value != 0);
+    } else {
+        // 16-bit negate: 0 - value
+        let value = operand_value;
+        let result = (0u32).wrapping_sub(value as u32);
+
+        cpu.write_operand(mem, &instr.dst, (result & 0xFFFF) as u16);
+
+        // Set OF and AF using the same logic as SUB (0 - value)
+        cpu.set_sub16_of_af(0, value, result);
+
+        // Set SF, ZF, PF using lazy flags
+        cpu.set_lazy_flags(result, FlagOp::Sub16);
+
+        // CF is set if source operand is not zero (special case for NEG)
+        cpu.set_flag(Cpu::CF, value != 0);
+    }
+}
+
+/// IMUL r/m - Signed Multiply
+/// Opcodes: 0xF6 /5 (8-bit), 0xF7 /5 (16-bit)
+///
+/// Performs signed multiplication:
+/// - 8-bit: AL * r/m8 → AX (signed)
+/// - 16-bit: AX * r/m16 → DX:AX (signed)
+///
+/// CF and OF are set if the result cannot be represented in the low half
+/// (i.e., sign extension of the low half doesn't equal the full result)
+pub fn imul(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    let operand_value = cpu.read_operand(mem, &instr.dst);
+    let is_byte = instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
+
+    if is_byte {
+        // 8-bit signed multiply: AL * r/m8 → AX
+        let al = cpu.read_reg8(0) as i8; // Read AL as signed
+        let operand = operand_value as u8 as i8; // Operand as signed
+        let result = (al as i16) * (operand as i16);
+        cpu.regs[0] = result as u16; // Store full 16-bit result in AX
+
+        // CF and OF are set if the result cannot be represented in AL
+        // (i.e., if sign-extending AL doesn't give the full AX result)
+        let al_sign_extended = (result as u16 & 0xFF) as i8 as i16;
+        let overflow = result != al_sign_extended;
+        cpu.set_flag(Cpu::CF, overflow);
+        cpu.set_flag(Cpu::OF, overflow);
+    } else {
+        // 16-bit signed multiply: AX * r/m16 → DX:AX
+        let ax = cpu.regs[0] as i16; // Read AX as signed
+        let operand = operand_value as i16; // Operand as signed
+        let result = (ax as i32) * (operand as i32);
+
+        cpu.regs[0] = (result & 0xFFFF) as u16; // Store low word in AX
+        cpu.regs[2] = ((result >> 16) & 0xFFFF) as u16; // Store high word in DX
+
+        // CF and OF are set if the result cannot be represented in AX
+        // (i.e., if sign-extending AX doesn't give the full DX:AX result)
+        let ax_sign_extended = (result as u32 & 0xFFFF) as i16 as i32;
+        let overflow = result != ax_sign_extended;
+        cpu.set_flag(Cpu::CF, overflow);
+        cpu.set_flag(Cpu::OF, overflow);
+    }
+}
+
+/// IDIV r/m - Signed Divide
+/// Opcodes: 0xF6 /7 (8-bit), 0xF7 /7 (16-bit)
+///
+/// Performs signed division:
+/// - 8-bit: AX ÷ r/m8 → AL (quotient), AH (remainder)
+/// - 16-bit: DX:AX ÷ r/m16 → AX (quotient), DX (remainder)
+///
+/// The remainder has the same sign as the dividend.
+///
+/// Triggers interrupt 0 if:
+/// - Divisor is 0 (divide by zero)
+/// - Quotient doesn't fit in destination register (overflow)
+///
+/// Flags: All flags are undefined after IDIV
+pub fn idiv(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) {
+    let divisor = cpu.read_operand(mem, &instr.dst);
+    let is_byte = instr.dst.op_type == OperandType::Reg8 || instr.dst.op_type == OperandType::Mem8;
+
+    if is_byte {
+        // 8-bit signed divide: AX ÷ r/m8 → AL (quotient), AH (remainder)
+        let divisor = divisor as u8 as i8;
+
+        // Check for divide by zero
+        if divisor == 0 {
+            panic!("IDIV: Division by zero");
+        }
+
+        let ax = cpu.regs[0] as i16; // Read AX as signed dividend
+        let quotient = ax / (divisor as i16);
+        let remainder = ax % (divisor as i16);
+
+        // Check for quotient overflow (quotient must fit in signed AL: -128 to 127)
+        if quotient < -128 || quotient > 127 {
+            panic!("IDIV: Quotient overflow (result doesn't fit in AL)");
+        }
+
+        // Store quotient in AL, remainder in AH
+        let al = quotient as u8;
+        let ah = remainder as u8;
+        cpu.regs[0] = ((ah as u16) << 8) | (al as u16);
+    } else {
+        // 16-bit signed divide: DX:AX ÷ r/m16 → AX (quotient), DX (remainder)
+        let divisor = divisor as i16;
+
+        // Check for divide by zero
+        if divisor == 0 {
+            panic!("IDIV: Division by zero");
+        }
+
+        let ax = cpu.regs[0] as i16; // Low word (signed)
+        let dx = cpu.regs[2] as i16; // High word (signed)
+        let dividend = ((dx as i32) << 16) | (ax as u16 as i32);
+
+        let quotient = dividend / (divisor as i32);
+        let remainder = dividend % (divisor as i32);
+
+        // Check for quotient overflow (quotient must fit in signed AX: -32768 to 32767)
+        if quotient < -32768 || quotient > 32767 {
+            panic!("IDIV: Quotient overflow (result doesn't fit in AX)");
+        }
+
+        // Store quotient in AX, remainder in DX
+        cpu.regs[0] = quotient as u16;
+        cpu.regs[2] = remainder as u16;
+    }
+
+    // Flags are undefined after IDIV - we don't modify them
+}
+
 /// NOT r/m - Bitwise NOT (one's complement)
 /// Opcodes: 0xF6 /2 (8-bit), 0xF7 /2 (16-bit)
 ///
@@ -1141,11 +1298,11 @@ pub fn group_f6(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) 
     match reg {
         0 | 1 => test_rm_imm(cpu, mem, instr), // TEST r/m8, imm8
         2 => not(cpu, mem, instr),             // NOT r/m8
-        3 => panic!("NEG r/m8 not implemented yet"),
-        4 => mul(cpu, mem, instr), // MUL r/m8
-        5 => panic!("IMUL r/m8 not implemented yet"),
-        6 => div(cpu, mem, instr), // DIV r/m8
-        7 => panic!("IDIV r/m8 not implemented yet"),
+        3 => neg(cpu, mem, instr),             // NEG r/m8
+        4 => mul(cpu, mem, instr),             // MUL r/m8
+        5 => imul(cpu, mem, instr),            // IMUL r/m8
+        6 => div(cpu, mem, instr),             // DIV r/m8
+        7 => idiv(cpu, mem, instr),            // IDIV r/m8
         _ => unreachable!(),
     }
 }
@@ -1158,11 +1315,11 @@ pub fn group_f7(cpu: &mut Cpu, mem: &mut MemoryBus, instr: &DecodedInstruction) 
     match reg {
         0 | 1 => test_rm_imm(cpu, mem, instr), // TEST r/m16, imm16
         2 => not(cpu, mem, instr),             // NOT r/m16
-        3 => panic!("NEG r/m16 not implemented yet"),
-        4 => mul(cpu, mem, instr), // MUL r/m16
-        5 => panic!("IMUL r/m16 not implemented yet"),
-        6 => div(cpu, mem, instr), // DIV r/m16
-        7 => panic!("IDIV r/m16 not implemented yet"),
+        3 => neg(cpu, mem, instr),             // NEG r/m16
+        4 => mul(cpu, mem, instr),             // MUL r/m16
+        5 => imul(cpu, mem, instr),            // IMUL r/m16
+        6 => div(cpu, mem, instr),             // DIV r/m16
+        7 => idiv(cpu, mem, instr),            // IDIV r/m16
         _ => unreachable!(),
     }
 }
