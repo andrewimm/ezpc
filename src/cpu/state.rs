@@ -1026,7 +1026,8 @@ impl Cpu {
         // If CPU is halted, skip instruction execution but check for interrupts
         if self.halted {
             self.check_interrupts(mem);
-            return 4; // HLT consumes cycles while waiting
+            self.total_cycles += 4; // HLT consumes cycles while waiting
+            return 4;
         }
 
         // Reset instruction cycle counter at start of new instruction
