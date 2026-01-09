@@ -106,6 +106,10 @@ impl Counter {
                 self.reload_value = count;
                 self.count = count;
                 self.null_count = false;
+                // In Mode 0, output goes LOW when new count is loaded
+                if self.mode == CounterMode::Mode0 {
+                    self.output = false;
+                }
             }
             AccessMode::HighByteOnly => {
                 // For 8-bit modes, 0 means 256 (0x100)
@@ -113,6 +117,10 @@ impl Counter {
                 self.reload_value = count;
                 self.count = count;
                 self.null_count = false;
+                // In Mode 0, output goes LOW when new count is loaded
+                if self.mode == CounterMode::Mode0 {
+                    self.output = false;
+                }
             }
             AccessMode::LowThenHigh => {
                 if !self.byte_toggle {
@@ -127,6 +135,10 @@ impl Counter {
                     self.count = self.reload_value;
                     self.byte_toggle = false;
                     self.null_count = false;
+                    // In Mode 0, output goes LOW when new count is loaded
+                    if self.mode == CounterMode::Mode0 {
+                        self.output = false;
+                    }
                 }
             }
             AccessMode::LatchCount => {
@@ -164,7 +176,7 @@ impl Counter {
         }
     }
 
-    /// Decrement counter (returns true if it wrapped to 0)
+    /// Decrement counter (returns true if interrupt should be generated)
     fn tick(&mut self) -> bool {
         if self.null_count {
             return false; // Counter not initialized
@@ -180,14 +192,31 @@ impl Counter {
         self.count -= 1;
 
         if self.count == 0 {
-            // Counter reached zero - fire IRQ and reload
-            // Note: reload_value of 0 means 65536, so we set count to 0
-            // (next tick will wrap it to 0xFFFF and continue counting)
-            self.count = self.reload_value;
-            return true;
+            match self.mode {
+                CounterMode::Mode0 => {
+                    // Mode 0: Interrupt on Terminal Count
+                    // Output goes HIGH when count reaches 0 and stays HIGH
+                    // Only generate interrupt on LOW->HIGH transition
+                    if !self.output {
+                        self.output = true;
+                        // Counter continues running but wraps to 0xFFFF (handled above on next tick)
+                        // Don't reload - Mode 0 is one-shot
+                        return true;
+                    }
+                    // Output already HIGH, no interrupt
+                    false
+                }
+                _ => {
+                    // Other modes: reload and fire interrupt
+                    // Note: reload_value of 0 means 65536, so we set count to 0
+                    // (next tick will wrap it to 0xFFFF and continue counting)
+                    self.count = self.reload_value;
+                    true
+                }
+            }
+        } else {
+            false
         }
-
-        false
     }
 }
 
@@ -469,5 +498,50 @@ mod tests {
 
         // Should have raised IRQ0
         assert!(pic.intr_out());
+    }
+
+    #[test]
+    fn test_mode0_single_interrupt() {
+        let mut pit = Pit::new();
+
+        // Configure counter 0 for Mode 0 (interrupt on terminal count), low byte only
+        pit.write_control(0b00010000); // Counter 0, low byte only, Mode 0
+
+        // Set count to 4
+        pit.write_u8(PIT_COUNTER_0, 0x04);
+
+        // Output should be LOW after loading count
+        assert!(!pit.counters[0].output);
+
+        // Tick 4 times - should fire interrupt on 4th tick
+        assert!(!pit.counters[0].tick()); // 4 -> 3
+        assert!(!pit.counters[0].tick()); // 3 -> 2
+        assert!(!pit.counters[0].tick()); // 2 -> 1
+        assert!(pit.counters[0].tick()); // 1 -> 0, interrupt fires!
+
+        // Output should now be HIGH
+        assert!(pit.counters[0].output);
+
+        // Continue ticking - counter wraps but should NOT fire another interrupt
+        // because output is already HIGH
+        assert!(!pit.counters[0].tick()); // 0 -> 0xFFFF
+        for _ in 0..0xFFFE {
+            assert!(!pit.counters[0].tick());
+        }
+        // Count is now at 1
+        assert_eq!(pit.counters[0].count, 1);
+        assert!(!pit.counters[0].tick()); // 1 -> 0, but output already HIGH, no interrupt
+
+        // Output still HIGH
+        assert!(pit.counters[0].output);
+
+        // Now load a new count - this should reset output to LOW
+        pit.write_u8(PIT_COUNTER_0, 0x02);
+        assert!(!pit.counters[0].output); // Output goes LOW
+
+        // Tick to terminal count - should fire interrupt again
+        assert!(!pit.counters[0].tick()); // 2 -> 1
+        assert!(pit.counters[0].tick()); // 1 -> 0, interrupt fires!
+        assert!(pit.counters[0].output); // Output HIGH again
     }
 }
