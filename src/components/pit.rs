@@ -170,27 +170,21 @@ impl Counter {
             return false; // Counter not initialized
         }
 
+        // Handle count of 0 specially - it represents 65536, so wrap to 0xFFFF
+        // This happens either on initial load with count=0, or after reload
         if self.count == 0 {
-            // Reload and signal wrap
-            // Special case: reload_value of 0 in 16-bit mode means 65536
-            // We reload to 0xFFFF (one less, since we're about to tick)
-            self.count = if self.reload_value == 0 {
-                0xFFFF // Will decrement to 0xFFFE on next tick
-            } else {
-                self.reload_value
-            };
+            self.count = 0xFFFF;
+            return false;
+        }
+
+        self.count -= 1;
+
+        if self.count == 0 {
+            // Counter reached zero - fire IRQ and reload
+            // Note: reload_value of 0 means 65536, so we set count to 0
+            // (next tick will wrap it to 0xFFFF and continue counting)
+            self.count = self.reload_value;
             return true;
-        } else {
-            self.count -= 1;
-            if self.count == 0 {
-                // Same reload logic
-                self.count = if self.reload_value == 0 {
-                    0xFFFF
-                } else {
-                    self.reload_value
-                };
-                return true;
-            }
         }
 
         false
@@ -426,6 +420,37 @@ mod tests {
         assert!(pit.counters[0].tick()); // 1 -> 0 -> 4 (reload)
 
         assert_eq!(pit.counters[0].count, 4);
+    }
+
+    #[test]
+    fn test_counter_zero_means_65536() {
+        let mut pit = Pit::new();
+        pit.write_control(0b00110100); // Counter 0, low+high, mode 2
+
+        // Write reload value of 0 (which means 65536)
+        pit.write_u8(PIT_COUNTER_0, 0x00);
+        pit.write_u8(PIT_COUNTER_0, 0x00);
+
+        assert_eq!(pit.counters[0].count, 0);
+        assert_eq!(pit.counters[0].reload_value, 0);
+
+        // First tick should NOT fire - count 0 wraps to 0xFFFF
+        assert!(!pit.counters[0].tick());
+        assert_eq!(pit.counters[0].count, 0xFFFF);
+
+        // Tick down to 1
+        for _ in 0..0xFFFE {
+            assert!(!pit.counters[0].tick());
+        }
+        assert_eq!(pit.counters[0].count, 1);
+
+        // Final tick should fire and reload to 0
+        assert!(pit.counters[0].tick());
+        assert_eq!(pit.counters[0].count, 0);
+
+        // Next tick wraps to 0xFFFF again (starting new 65536 count)
+        assert!(!pit.counters[0].tick());
+        assert_eq!(pit.counters[0].count, 0xFFFF);
     }
 
     #[test]
