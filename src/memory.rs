@@ -5,7 +5,7 @@
 //! - 0xA0000-0xBFFFF: Video memory (not implemented yet)
 //! - 0xC0000-0xFFFFF: ROM and BIOS
 
-use crate::components::dma::Dma;
+use crate::components::dma::{Dma, DmaCapable, DmaDirection};
 use crate::components::mda::Mda;
 use crate::components::pic::Pic;
 use crate::io::IoDevice;
@@ -166,6 +166,85 @@ impl MemoryBus {
     /// Get a mutable reference to the MDA (Monochrome Display Adapter)
     pub fn mda_mut(&mut self) -> &mut Mda {
         &mut self.mda
+    }
+
+    /// Get a reference to the DMA controller
+    pub fn dma(&self) -> &Dma {
+        &self.dma
+    }
+
+    /// Get a mutable reference to the DMA controller
+    pub fn dma_mut(&mut self) -> &mut Dma {
+        &mut self.dma
+    }
+
+    /// Perform one byte of DMA transfer for a channel
+    ///
+    /// This method coordinates between the DMA controller, memory, and a device.
+    /// It handles both read (memory→device) and write (device→memory) transfers.
+    ///
+    /// # Arguments
+    /// * `channel` - DMA channel number (0-3)
+    /// * `device` - Device implementing DmaCapable trait
+    ///
+    /// # Returns
+    /// * `Some(true)` - Transfer completed, terminal count reached
+    /// * `Some(false)` - One byte transferred successfully
+    /// * `None` - Channel not active or no data available
+    pub fn dma_transfer_byte<D: DmaCapable>(
+        &mut self,
+        channel: u8,
+        device: &mut D,
+    ) -> Option<bool> {
+        // Check if channel is active
+        if !self.dma.is_channel_active(channel) {
+            return None;
+        }
+
+        let direction = self.dma.direction(channel);
+        let addr = self.dma.current_address(channel);
+
+        match direction {
+            DmaDirection::Write => {
+                // Device → Memory
+                if let Some(byte) = device.dma_read_byte() {
+                    // Write to RAM (DMA can only access first 1MB, we have 64KB)
+                    if addr < 0x10000 {
+                        self.ram[addr as usize] = byte;
+                    }
+                    let tc = self.dma.advance(channel);
+                    if tc {
+                        device.dma_terminal_count();
+                    }
+                    Some(tc)
+                } else {
+                    None
+                }
+            }
+            DmaDirection::Read => {
+                // Memory → Device
+                let byte = if addr < 0x10000 {
+                    self.ram[addr as usize]
+                } else {
+                    0xFF
+                };
+                device.dma_write_byte(byte);
+                let tc = self.dma.advance(channel);
+                if tc {
+                    device.dma_terminal_count();
+                }
+                Some(tc)
+            }
+            DmaDirection::Verify => {
+                // Pseudo-transfer: just advance address/count
+                let tc = self.dma.advance(channel);
+                if tc {
+                    device.dma_terminal_count();
+                }
+                Some(tc)
+            }
+            DmaDirection::Invalid => None,
+        }
     }
 
     /// Read a byte from an IO port
