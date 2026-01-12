@@ -17,13 +17,13 @@ const PPI_PORT_A: u16 = 0x60; // Data port (DIP switches or keyboard)
 const PPI_PORT_B: u16 = 0x61; // System control port B
 const PPI_PORT_C: u16 = 0x62; // System control port C
 
-/// DIP switch configuration: 64K RAM, MDA display, no floppy, no 8087
-/// Bits 7-6: Number of floppy drives (00 = 1)
+/// DIP switch configuration: 64K RAM, MDA display, 1 floppy, no 8087
+/// Bits 7-6: Number of floppy drives - 1 (00 = 1 drive)
 /// Bits 5-4: Video mode (11 = MDA 80x25)
 /// Bits 3-2: RAM size (11 = 64K)
 /// Bit 1: 8087 installed (0 = no)
-/// Bit 0: Floppy installed (1 = no)
-const DIP_SWITCHES: u8 = 0b00111101; // 0x3D
+/// Bit 0: Floppy installed (0 = yes)
+const DIP_SWITCHES: u8 = 0b00111100; // 0x3C
 
 /// Keyboard reset state machine
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,6 +33,14 @@ enum KeyboardResetState {
     /// Reset in progress (bit 6 = 0, clock low/disabled)
     ResetAsserted,
 }
+
+/// Delay in cycles before keyboard responds to reset with 0xAA
+///
+/// Real XT keyboards take 300-500ms for BAT (Basic Assurance Test).
+/// We use a smaller delay that's still long enough for the BIOS to
+/// execute past the MOV AH,0 instruction before the interrupt fires.
+/// At 4.77 MHz, 100 cycles ≈ 21 microseconds.
+const KEYBOARD_RESET_DELAY_CYCLES: u32 = 100;
 
 /// Intel 8255 PPI for IBM PC
 ///
@@ -57,8 +65,9 @@ pub struct Ppi {
     /// Keyboard reset state machine
     reset_state: KeyboardResetState,
 
-    /// Flag indicating reset just completed and we need to trigger keyboard reset
-    reset_pending: bool,
+    /// Cycles remaining before keyboard reset completes and 0xAA is sent
+    /// When > 0, keyboard is performing BAT (Basic Assurance Test)
+    reset_delay_cycles: u32,
 }
 
 impl Ppi {
@@ -71,7 +80,7 @@ impl Ppi {
             port_b_state: 0x00,
             dip_switches: DIP_SWITCHES,
             reset_state: KeyboardResetState::Idle,
-            reset_pending: false,
+            reset_delay_cycles: 0,
         }
     }
 
@@ -84,7 +93,7 @@ impl Ppi {
             port_b_state: 0x00,
             dip_switches,
             reset_state: KeyboardResetState::Idle,
-            reset_pending: false,
+            reset_delay_cycles: 0,
         }
     }
 
@@ -108,8 +117,9 @@ impl IoDevice for Ppi {
                     // Return DIP switches
                     self.dip_switches
                 } else {
-                    // Return latched scancode (or DIP switches if none)
-                    let data = self.latched_scancode.unwrap_or(self.dip_switches);
+                    // Return latched scancode (or 0 if none)
+                    // BIOS expects 0 when no key pressed (for stuck key test)
+                    let data = self.latched_scancode.unwrap_or(0);
 
                     // Clear latched scancode after reading (in keyboard mode)
                     self.latched_scancode = None;
@@ -165,9 +175,9 @@ impl IoDevice for Ppi {
                     }
                     (false, true) => {
                         // Clock went high (0→1): reset released
-                        // Schedule keyboard reset for next tick
+                        // Start keyboard BAT delay - keyboard will respond with 0xAA after delay
                         if self.reset_state == KeyboardResetState::ResetAsserted {
-                            self.reset_pending = true;
+                            self.reset_delay_cycles = KEYBOARD_RESET_DELAY_CYCLES;
                             self.reset_state = KeyboardResetState::Idle;
                         }
                     }
@@ -188,7 +198,7 @@ impl IoDevice for Ppi {
         }
     }
 
-    fn tick(&mut self, _cycles: u16, pic: &mut Pic) {
+    fn tick(&mut self, cycles: u16, pic: &mut Pic) {
         // Step 1: Set PIC IRQ1 to match internal interrupt state
         if self.interrupt_pending {
             pic.set_irq_level(1, true);
@@ -196,10 +206,14 @@ impl IoDevice for Ppi {
             pic.set_irq_level(1, false);
         }
 
-        // Step 2: Handle keyboard reset if pending
-        if self.reset_pending {
-            self.keyboard.reset();
-            self.reset_pending = false;
+        // Step 2: Handle keyboard reset delay countdown
+        // Simulates keyboard BAT (Basic Assurance Test) time
+        if self.reset_delay_cycles > 0 {
+            self.reset_delay_cycles = self.reset_delay_cycles.saturating_sub(cycles as u32);
+            if self.reset_delay_cycles == 0 {
+                // Reset delay complete - keyboard sends 0xAA
+                self.keyboard.reset();
+            }
         }
 
         // Step 3: If no latched scancode, check keyboard for buffered scancodes
@@ -241,11 +255,12 @@ mod tests {
     }
 
     #[test]
-    fn test_port_60_returns_dip_switches_by_default() {
+    fn test_port_60_returns_zero_in_keyboard_mode() {
         let queue = Arc::new(RwLock::new(VecDeque::new()));
         let mut ppi = Ppi::new(queue);
-        // Port 0x60 should return DIP switches by default (no scancode latched)
-        assert_eq!(ppi.read_u8(PPI_PORT_A), DIP_SWITCHES);
+        // Port 0x60 should return 0 in keyboard mode (no scancode latched)
+        // Default port_b_state is 0x00, which means keyboard mode (bit 7 = 0)
+        assert_eq!(ppi.read_u8(PPI_PORT_A), 0);
     }
 
     #[test]
@@ -356,15 +371,20 @@ mod tests {
 
         // 2. Release reset: clock goes high (bit 6 = 1)
         ppi.write_u8(PPI_PORT_B, 0x40);
-        assert!(ppi.reset_pending);
+        assert!(ppi.reset_delay_cycles > 0);
 
-        // 3. Tick should call keyboard.reset() and latch 0xAA
+        // 3. Single tick shouldn't complete reset yet (delay in progress)
         ppi.tick(1, &mut pic);
-        assert!(!ppi.reset_pending);
+        assert!(ppi.reset_delay_cycles > 0);
+        assert_eq!(ppi.latched_scancode, None);
+
+        // 4. Tick enough cycles to complete the reset delay
+        ppi.tick(KEYBOARD_RESET_DELAY_CYCLES as u16, &mut pic);
+        assert_eq!(ppi.reset_delay_cycles, 0);
         assert_eq!(ppi.latched_scancode, Some(0xAA));
         assert!(pic.intr_out());
 
-        // 4. Read should return 0xAA
+        // 5. Read should return 0xAA
         assert_eq!(ppi.read_u8(PPI_PORT_A), 0xAA);
     }
 
@@ -390,8 +410,8 @@ mod tests {
         // Release reset (clock high)
         ppi.write_u8(PPI_PORT_B, 0x40);
 
-        // Tick should latch 0xAA (from keyboard.reset())
-        ppi.tick(1, &mut pic);
+        // Tick enough cycles to complete reset delay
+        ppi.tick(KEYBOARD_RESET_DELAY_CYCLES as u16 + 1, &mut pic);
         assert_eq!(ppi.read_u8(PPI_PORT_A), 0xAA);
     }
 
@@ -414,8 +434,8 @@ mod tests {
         ppi.write_u8(PPI_PORT_B, 0x00);
         ppi.write_u8(PPI_PORT_B, 0x40);
 
-        // Tick - keyboard.reset() clears queue and adds 0xAA
-        ppi.tick(1, &mut pic);
+        // Tick enough cycles to complete reset - keyboard.reset() clears queue and adds 0xAA
+        ppi.tick(KEYBOARD_RESET_DELAY_CYCLES as u16 + 1, &mut pic);
         assert_eq!(ppi.read_u8(PPI_PORT_A), 0xAA);
 
         // Queue should be empty (only 0xAA was there, and we consumed it)
@@ -501,16 +521,16 @@ mod tests {
         ppi.write_u8(PPI_PORT_B, 0x00);
         ppi.write_u8(PPI_PORT_B, 0x00);
 
-        // Should be in ResetAsserted state
+        // Should be in ResetAsserted state, no delay started yet
         assert_eq!(ppi.reset_state, KeyboardResetState::ResetAsserted);
-        assert!(!ppi.reset_pending);
+        assert_eq!(ppi.reset_delay_cycles, 0);
 
-        // Single rising edge (0→1) should trigger reset
+        // Single rising edge (0→1) should start reset delay
         ppi.write_u8(PPI_PORT_B, 0x40);
-        assert!(ppi.reset_pending);
+        assert!(ppi.reset_delay_cycles > 0);
 
-        // Tick should generate exactly one 0xAA
-        ppi.tick(1, &mut pic);
+        // Tick enough cycles to complete reset - should generate exactly one 0xAA
+        ppi.tick(KEYBOARD_RESET_DELAY_CYCLES as u16 + 1, &mut pic);
         assert_eq!(ppi.read_u8(PPI_PORT_A), 0xAA);
 
         // Additional writes with bit 6=1 (no transition) should not generate more 0xAA

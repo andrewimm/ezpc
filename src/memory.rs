@@ -6,6 +6,7 @@
 //! - 0xC0000-0xFFFFF: ROM and BIOS
 
 use crate::components::dma::{Dma, DmaCapable, DmaDirection};
+use crate::components::fdc::Fdc;
 use crate::components::mda::Mda;
 use crate::components::pic::Pic;
 use crate::io::IoDevice;
@@ -30,6 +31,10 @@ const MDA_VRAM_END: u32 = 0xB0FFF;
 const MDA_PORT_BASE: u16 = 0x3B0;
 const MDA_PORT_END: u16 = 0x3BF;
 
+/// FDC I/O ports (hardwired for DMA coordination)
+const FDC_PORT_BASE: u16 = 0x3F0;
+const FDC_PORT_END: u16 = 0x3F7;
+
 /// Memory bus for the IBM PC
 pub struct MemoryBus {
     /// RAM - starting with 64KB
@@ -50,6 +55,10 @@ pub struct MemoryBus {
     /// Hardwired at 0xB0000-0xB0FFF (video RAM) and 0x3B0-0x3BF (ports)
     mda: Mda,
 
+    /// FDC (Floppy Disk Controller)
+    /// Hardwired at 0x3F0-0x3F7 for DMA coordination
+    fdc: Fdc,
+
     /// Registered IO devices for IN/OUT instructions
     io_devices: Vec<Box<dyn IoDevice>>,
 }
@@ -63,6 +72,7 @@ impl MemoryBus {
             dma: Dma::new(),
             pic: Pic::new(0x08), // IRQ0-7 map to INT 0x08-0x0F
             mda: Mda::new(),
+            fdc: Fdc::new(),
             io_devices: Vec::new(),
         }
     }
@@ -178,6 +188,16 @@ impl MemoryBus {
         &mut self.dma
     }
 
+    /// Get a reference to the FDC (Floppy Disk Controller)
+    pub fn fdc(&self) -> &Fdc {
+        &self.fdc
+    }
+
+    /// Get a mutable reference to the FDC (Floppy Disk Controller)
+    pub fn fdc_mut(&mut self) -> &mut Fdc {
+        &mut self.fdc
+    }
+
     /// Perform one byte of DMA transfer for a channel
     ///
     /// This method coordinates between the DMA controller, memory, and a device.
@@ -279,6 +299,14 @@ impl MemoryBus {
             return value;
         }
 
+        // FDC is hardwired for DMA coordination
+        if port >= FDC_PORT_BASE && port <= FDC_PORT_END {
+            let value = self.fdc.read_u8(port);
+            #[cfg(debug_assertions)]
+            println!("[IO] IN  port 0x{:04X} -> 0x{:02X}", port, value);
+            return value;
+        }
+
         // Check other IO devices
         for device in &mut self.io_devices {
             if device.port_range().contains(&port) {
@@ -322,6 +350,12 @@ impl MemoryBus {
             return;
         }
 
+        // FDC is hardwired for DMA coordination
+        if port >= FDC_PORT_BASE && port <= FDC_PORT_END {
+            self.fdc.write_u8(port, value);
+            return;
+        }
+
         // Check other IO devices
         for device in &mut self.io_devices {
             if device.port_range().contains(&port) {
@@ -357,14 +391,76 @@ impl MemoryBus {
         // The borrow checker allows this because they're disjoint borrows
         let pic = &mut self.pic;
         let mda = &mut self.mda;
+        let fdc = &mut self.fdc;
         let io_devices = &mut self.io_devices;
 
         // Update MDA
         mda.tick(cycles, pic);
 
+        // Update FDC
+        fdc.tick(cycles, pic);
+
         // Update all IO devices
         for device in io_devices.iter_mut() {
             device.tick(cycles, pic);
+        }
+    }
+
+    /// Process FDC DMA transfers
+    ///
+    /// This method handles DMA transfers between the FDC and memory.
+    /// It should be called regularly (e.g., after each CPU instruction or
+    /// when the FDC signals DREQ).
+    ///
+    /// Returns `Some(true)` if terminal count was reached, `Some(false)` if
+    /// a byte was transferred, or `None` if no transfer occurred.
+    pub fn fdc_dma_tick(&mut self) -> Option<bool> {
+        // Check if FDC is requesting DMA and channel 2 is active
+        if !self.fdc.dma_dreq() || !self.dma.is_channel_active(2) {
+            return None;
+        }
+
+        let direction = self.dma.direction(2);
+        let addr = self.dma.current_address(2);
+
+        match direction {
+            DmaDirection::Write => {
+                // FDC → Memory (Read Data command)
+                if let Some(byte) = self.fdc.dma_read_byte() {
+                    if addr < 0x10000 {
+                        self.ram[addr as usize] = byte;
+                    }
+                    let tc = self.dma.advance(2);
+                    if tc {
+                        self.fdc.dma_terminal_count();
+                    }
+                    Some(tc)
+                } else {
+                    None
+                }
+            }
+            DmaDirection::Read => {
+                // Memory → FDC (Write Data command)
+                let byte = if addr < 0x10000 {
+                    self.ram[addr as usize]
+                } else {
+                    0xFF
+                };
+                self.fdc.dma_write_byte(byte);
+                let tc = self.dma.advance(2);
+                if tc {
+                    self.fdc.dma_terminal_count();
+                }
+                Some(tc)
+            }
+            DmaDirection::Verify => {
+                let tc = self.dma.advance(2);
+                if tc {
+                    self.fdc.dma_terminal_count();
+                }
+                Some(tc)
+            }
+            DmaDirection::Invalid => None,
         }
     }
 }
