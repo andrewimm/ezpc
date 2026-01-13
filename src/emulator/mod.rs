@@ -3,6 +3,7 @@
 //! This module manages the overall emulator state, including CPU, memory,
 //! and rendering components.
 
+use crate::components::floppy::FloppyDisk;
 use crate::components::pit::Pit;
 use crate::components::ppi::Ppi;
 use crate::cpu::Cpu;
@@ -39,11 +40,32 @@ impl EmulatorState {
         rom_data: Option<Vec<u8>>,
         gdb_socket_path: Option<&str>,
     ) -> Self {
+        Self::with_floppies(device, queue, surface_format, rom_data, gdb_socket_path, None, None)
+    }
+
+    /// Create a new emulator state with floppy disk images
+    pub fn with_floppies(
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        surface_format: wgpu::TextureFormat,
+        rom_data: Option<Vec<u8>>,
+        gdb_socket_path: Option<&str>,
+        floppy_a: Option<FloppyDisk>,
+        floppy_b: Option<FloppyDisk>,
+    ) -> Self {
         let mut memory = MemoryBus::new();
 
         // Load ROM if provided
         if let Some(rom) = rom_data {
             memory.load_rom(&rom);
+        }
+
+        // Insert floppy disks into FDC
+        if let Some(disk) = floppy_a {
+            memory.insert_floppy(0, disk);
+        }
+        if let Some(disk) = floppy_b {
+            memory.insert_floppy(1, disk);
         }
 
         // Create keyboard queue and register PPI (which owns the keyboard)

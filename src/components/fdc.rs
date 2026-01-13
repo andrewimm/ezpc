@@ -10,6 +10,7 @@
 //! - 0x3F7: Digital Input Register (DIR, read) / Config Control (CCR, write)
 
 use crate::components::dma::DmaCapable;
+use crate::components::floppy::FloppyDisk;
 use crate::components::pic::Pic;
 use crate::io::IoDevice;
 use std::collections::VecDeque;
@@ -158,7 +159,6 @@ impl Default for DriveState {
 // =============================================================================
 
 /// NEC μPD765A Floppy Disk Controller
-#[derive(Debug)]
 pub struct Fdc {
     // State machine
     phase: FdcPhase,
@@ -177,6 +177,9 @@ pub struct Fdc {
     // Drive state (4 drives max)
     drives: [DriveState; 4],
 
+    // Disk images (one per drive)
+    disks: [Option<FloppyDisk>; 4],
+
     // Current operation parameters
     head: u8,
     sector: u8,
@@ -187,6 +190,8 @@ pub struct Fdc {
     dma_pending: bool,
     transfer_buffer: Vec<u8>,
     transfer_index: usize,
+    transfer_drive: u8,    // Drive being used for current transfer
+    transfer_is_write: bool, // true = write to disk, false = read from disk
 
     // Interrupt state
     irq_pending: bool,
@@ -223,6 +228,7 @@ impl Fdc {
                 DriveState::new(),
                 DriveState::new(),
             ],
+            disks: [None, None, None, None],
             head: 0,
             sector: 0,
             sector_size: 2, // 512 bytes default
@@ -230,6 +236,8 @@ impl Fdc {
             dma_pending: false,
             transfer_buffer: Vec::new(),
             transfer_index: 0,
+            transfer_drive: 0,
+            transfer_is_write: false,
             irq_pending: false,
             pending_interrupts: VecDeque::new(),
             step_rate_time: 0,
@@ -238,6 +246,41 @@ impl Fdc {
             non_dma_mode: false,
             reset_pending: false,
         }
+    }
+
+    /// Insert a disk into a drive
+    ///
+    /// Returns the previously inserted disk, if any.
+    pub fn insert_disk(&mut self, drive: u8, disk: FloppyDisk) -> Option<FloppyDisk> {
+        if drive >= 4 {
+            return Some(disk);
+        }
+        let old = self.disks[drive as usize].take();
+        self.disks[drive as usize] = Some(disk);
+        // Clear disk changed flag when disk is inserted
+        self.drives[drive as usize].disk_changed = false;
+        old
+    }
+
+    /// Eject a disk from a drive
+    ///
+    /// Returns the ejected disk, if any.
+    pub fn eject_disk(&mut self, drive: u8) -> Option<FloppyDisk> {
+        if drive >= 4 {
+            return None;
+        }
+        let disk = self.disks[drive as usize].take();
+        // Set disk changed flag when disk is ejected
+        self.drives[drive as usize].disk_changed = true;
+        disk
+    }
+
+    /// Check if a drive has a disk inserted
+    pub fn has_disk(&self, drive: u8) -> bool {
+        if drive >= 4 {
+            return false;
+        }
+        self.disks[drive as usize].is_some()
     }
 
     /// Enter reset state (DOR bit 2 goes low)
@@ -409,17 +452,25 @@ impl Fdc {
         let head = (byte1 >> 2) & 0x01;
 
         // Build Status Register 3
+        // Bits: FT WP RDY T0 TS HD DS1 DS0
         let mut st3 = (drive as u8) | (head << 2);
 
         // Add status bits
         if self.drives[drive].cylinder == 0 {
-            st3 |= 0x10; // Track 0
+            st3 |= 0x10; // Track 0 (T0)
         }
-        // Two-sided drive
+
+        // Two-sided drive (TS)
         st3 |= 0x08;
-        // Write protected (always report not protected for now)
-        // Ready
-        st3 |= 0x20;
+
+        // Check for disk presence and write protection
+        if let Some(disk) = self.disks[drive].as_ref() {
+            st3 |= 0x20; // Ready (RDY) - disk is present
+            if disk.is_write_protected() {
+                st3 |= 0x40; // Write protected (WP)
+            }
+        }
+        // If no disk, RDY bit stays 0
 
         self.result_buffer.clear();
         self.result_buffer.push(st3);
@@ -514,37 +565,109 @@ impl Fdc {
         let drive = (byte1 & 0x03) as usize;
         self.head = (byte1 >> 2) & 0x01;
 
+        let cylinder = self.command_buffer.get(2).copied().unwrap_or(0);
+        let head_param = self.command_buffer.get(3).copied().unwrap_or(0);
+        self.sector = self.command_buffer.get(4).copied().unwrap_or(1);
+        self.sector_size = self.command_buffer.get(5).copied().unwrap_or(2);
+        self.eot = self.command_buffer.get(6).copied().unwrap_or(9);
+
+        // Check if disk is present
+        let disk = match self.disks[drive].as_ref() {
+            Some(d) => d,
+            None => {
+                // No disk - return "No Data" error
+                self.setup_read_write_result(drive as u8, ST1_ND, 0);
+                return;
+            }
+        };
+
+        // Calculate sector size in bytes
+        let sector_bytes = 128usize << self.sector_size;
+
+        // Read sectors from start sector to EOT into transfer buffer
+        self.transfer_buffer.clear();
+        let mut current_sector = self.sector;
+        let mut error_st1 = 0u8;
+
+        while current_sector <= self.eot {
+            if let Some(sector_data) = disk.read_sector(cylinder, head_param, current_sector) {
+                self.transfer_buffer.extend_from_slice(&sector_data[..sector_bytes.min(sector_data.len())]);
+                current_sector += 1;
+            } else {
+                // Sector not found
+                error_st1 = ST1_ND;
+                break;
+            }
+        }
+
+        if self.transfer_buffer.is_empty() {
+            // No data read - return error
+            self.setup_read_write_result(drive as u8, error_st1, 0);
+            return;
+        }
+
+        // Set up for DMA transfer
+        self.transfer_index = 0;
+        self.transfer_drive = drive as u8;
+        self.transfer_is_write = false;
+        self.dma_pending = true;
+        self.phase = FdcPhase::Execution;
+        self.current_command = FdcCommand::ReadData;
+    }
+
+    /// Write Data command (0x05/0x45/0xC5): Write sectors
+    fn cmd_write_data(&mut self) {
+        // Same parameter format as Read Data
+        // Byte 0: MT MF 0 0 0101 (command with modifiers)
+        // Byte 1: HD DS1 DS0
+        // Byte 2: C (cylinder)
+        // Byte 3: H (head)
+        // Byte 4: R (sector)
+        // Byte 5: N (sector size)
+        // Byte 6: EOT (end of track)
+        // Byte 7: GPL (gap length)
+        // Byte 8: DTL (data length if N=0)
+
+        let byte1 = self.command_buffer.get(1).copied().unwrap_or(0);
+        let drive = (byte1 & 0x03) as usize;
+        self.head = (byte1 >> 2) & 0x01;
+
         let _cylinder = self.command_buffer.get(2).copied().unwrap_or(0);
         let _head_param = self.command_buffer.get(3).copied().unwrap_or(0);
         self.sector = self.command_buffer.get(4).copied().unwrap_or(1);
         self.sector_size = self.command_buffer.get(5).copied().unwrap_or(2);
         self.eot = self.command_buffer.get(6).copied().unwrap_or(9);
 
-        // Without disk images, we return an error result
-        // In a full implementation, this would:
-        // 1. Read sectors from disk image into transfer_buffer
-        // 2. Set dma_pending = true
-        // 3. DMA controller would transfer data to memory
-        // 4. On terminal count, set up result phase
+        // Check if disk is present
+        let disk = match self.disks[drive].as_ref() {
+            Some(d) => d,
+            None => {
+                // No disk - return "No Data" error
+                self.setup_read_write_result(drive as u8, ST1_ND, 0);
+                return;
+            }
+        };
 
-        // For now, return "No Data" error (sector not found)
-        self.setup_read_write_result(drive as u8, ST1_ND, 0);
-    }
+        // Check if disk is write-protected
+        if disk.is_write_protected() {
+            self.setup_read_write_result(drive as u8, ST1_NW, 0);
+            return;
+        }
 
-    /// Write Data command (0x05/0x45/0xC5): Write sectors
-    fn cmd_write_data(&mut self) {
-        // Same parameter format as Read Data
+        // Calculate total bytes to receive
+        let sector_bytes = 128usize << self.sector_size;
+        let num_sectors = (self.eot - self.sector + 1) as usize;
+        let total_bytes = sector_bytes * num_sectors;
 
-        let byte1 = self.command_buffer.get(1).copied().unwrap_or(0);
-        let drive = (byte1 & 0x03) as usize;
-        self.head = (byte1 >> 2) & 0x01;
-
-        self.sector = self.command_buffer.get(4).copied().unwrap_or(1);
-        self.sector_size = self.command_buffer.get(5).copied().unwrap_or(2);
-        self.eot = self.command_buffer.get(6).copied().unwrap_or(9);
-
-        // Without disk images, return error
-        self.setup_read_write_result(drive as u8, ST1_ND, 0);
+        // Prepare buffer to receive data
+        self.transfer_buffer.clear();
+        self.transfer_buffer.reserve(total_bytes);
+        self.transfer_index = 0;
+        self.transfer_drive = drive as u8;
+        self.transfer_is_write = true;
+        self.dma_pending = true;
+        self.phase = FdcPhase::Execution;
+        self.current_command = FdcCommand::WriteData;
     }
 
     /// Read ID command (0x0A/0x4A): Read sector ID
@@ -556,8 +679,45 @@ impl Fdc {
         let drive = (byte1 & 0x03) as usize;
         self.head = (byte1 >> 2) & 0x01;
 
-        // Without disk images, return error
-        self.setup_read_write_result(drive as u8, ST1_MA, 0);
+        // Check if disk is present
+        let disk = match self.disks[drive].as_ref() {
+            Some(d) => d,
+            None => {
+                // No disk - return "Missing Address Mark" error
+                self.setup_read_write_result(drive as u8, ST1_MA, 0);
+                return;
+            }
+        };
+
+        let geometry = disk.geometry();
+        let cylinder = self.drives[drive].cylinder;
+
+        // Return the first sector ID on the current track
+        // Result: ST0, ST1, ST2, C, H, R, N
+        self.sector = 1; // First sector
+        self.sector_size = match geometry.bytes_per_sector {
+            128 => 0,
+            256 => 1,
+            512 => 2,
+            1024 => 3,
+            _ => 2,
+        };
+
+        // Success - set up result with current track info
+        self.result_buffer.clear();
+        let st0 = ST0_IC_NORMAL | (self.head << 2) | (drive as u8);
+        self.result_buffer.push(st0);
+        self.result_buffer.push(0); // ST1 - no errors
+        self.result_buffer.push(0); // ST2 - no errors
+        self.result_buffer.push(cylinder);
+        self.result_buffer.push(self.head);
+        self.result_buffer.push(self.sector);
+        self.result_buffer.push(self.sector_size);
+
+        self.result_index = 0;
+        self.phase = FdcPhase::Result;
+        self.current_command = FdcCommand::ReadId;
+        self.irq_pending = true;
     }
 
     /// Format Track command (0x0D): Format a track
@@ -573,8 +733,38 @@ impl Fdc {
         let drive = (byte1 & 0x03) as usize;
         self.head = (byte1 >> 2) & 0x01;
 
-        // Without disk images, return error (not writable)
-        self.setup_read_write_result(drive as u8, ST1_NW, 0);
+        self.sector_size = self.command_buffer.get(2).copied().unwrap_or(2);
+        let _sectors_per_track = self.command_buffer.get(3).copied().unwrap_or(9);
+        let _gap_length = self.command_buffer.get(4).copied().unwrap_or(0x1B);
+        let fill_byte = self.command_buffer.get(5).copied().unwrap_or(0xF6);
+
+        // Check if disk is present
+        let disk = match self.disks[drive].as_mut() {
+            Some(d) => d,
+            None => {
+                // No disk - return "No Data" error
+                self.setup_read_write_result(drive as u8, ST1_ND, 0);
+                return;
+            }
+        };
+
+        // Check if disk is write-protected
+        if disk.is_write_protected() {
+            self.setup_read_write_result(drive as u8, ST1_NW, 0);
+            return;
+        }
+
+        let cylinder = self.drives[drive].cylinder;
+
+        // Format the track
+        if let Err(_) = disk.format_track(cylinder, self.head, fill_byte) {
+            self.setup_read_write_result(drive as u8, ST1_NW, 0);
+            return;
+        }
+
+        // Success
+        self.sector = 1;
+        self.setup_read_write_result(drive as u8, 0, 0);
     }
 
     /// Handle invalid/unrecognized command
@@ -631,11 +821,43 @@ impl Fdc {
 
     /// Complete a DMA transfer (called when terminal count is reached)
     pub fn complete_transfer(&mut self) {
-        // Set up result phase after DMA completes
         self.dma_pending = false;
+        let drive = self.transfer_drive;
 
-        let drive = self.dor & DOR_DRIVE_SEL_MASK;
-        self.setup_read_write_result(drive, 0, 0);
+        // For write operations, commit the received data to the disk
+        if self.transfer_is_write {
+            // Get the command parameters we saved earlier
+            let cylinder = self.command_buffer.get(2).copied().unwrap_or(0);
+            let head_param = self.command_buffer.get(3).copied().unwrap_or(0);
+            let start_sector = self.command_buffer.get(4).copied().unwrap_or(1);
+            let sector_size_code = self.command_buffer.get(5).copied().unwrap_or(2);
+            let sector_bytes = 128usize << sector_size_code;
+
+            // Write sectors to disk
+            let mut error_st1 = 0u8;
+            let mut offset = 0usize;
+            let mut current_sector = start_sector;
+
+            if let Some(disk) = self.disks[drive as usize].as_mut() {
+                while offset + sector_bytes <= self.transfer_buffer.len() {
+                    let sector_data = &self.transfer_buffer[offset..offset + sector_bytes];
+                    if let Err(_) = disk.write_sector(cylinder, head_param, current_sector, sector_data) {
+                        error_st1 = ST1_NW;
+                        break;
+                    }
+                    offset += sector_bytes;
+                    current_sector += 1;
+                }
+            } else {
+                error_st1 = ST1_ND;
+            }
+
+            self.sector = current_sector;
+            self.setup_read_write_result(drive, error_st1, 0);
+        } else {
+            // Read operation - data already transferred, just set up result
+            self.setup_read_write_result(drive, 0, 0);
+        }
     }
 }
 
@@ -987,5 +1209,315 @@ mod tests {
         fdc.drives[0].disk_changed = false;
         let dir = fdc.read_u8(FDC_DIR);
         assert_eq!(dir & 0x80, 0x00);
+    }
+
+    // =========================================================================
+    // FDC + Disk Integration Tests
+    // =========================================================================
+
+    use crate::components::floppy::{DiskGeometry, FloppyDisk};
+
+    #[test]
+    fn test_insert_disk_clears_disk_changed() {
+        let mut fdc = Fdc::new();
+        fdc.write_u8(FDC_DOR, DOR_RESET);
+
+        // Disk changed flag starts true
+        assert!(fdc.drives[0].disk_changed);
+
+        // Insert a disk
+        let geometry = DiskGeometry::new(40, 2, 9, 512);
+        let disk = FloppyDisk::new(geometry);
+        fdc.insert_disk(0, disk);
+
+        // Disk changed flag should be cleared
+        assert!(!fdc.drives[0].disk_changed);
+        assert!(fdc.has_disk(0));
+    }
+
+    #[test]
+    fn test_eject_disk_sets_disk_changed() {
+        let mut fdc = Fdc::new();
+        fdc.write_u8(FDC_DOR, DOR_RESET);
+
+        // Insert and then eject a disk
+        let geometry = DiskGeometry::new(40, 2, 9, 512);
+        let disk = FloppyDisk::new(geometry);
+        fdc.insert_disk(0, disk);
+        assert!(!fdc.drives[0].disk_changed);
+
+        let ejected = fdc.eject_disk(0);
+        assert!(ejected.is_some());
+        assert!(fdc.drives[0].disk_changed);
+        assert!(!fdc.has_disk(0));
+    }
+
+    #[test]
+    fn test_read_data_with_disk() {
+        let mut fdc = Fdc::new();
+        fdc.write_u8(FDC_DOR, DOR_RESET | DOR_DMA_ENABLE);
+        fdc.pending_interrupts.clear();
+
+        // Create a disk with test data
+        let geometry = DiskGeometry::new(40, 2, 9, 512);
+        let mut disk = FloppyDisk::new(geometry);
+        disk.set_write_protected(false);
+
+        // Write test pattern to sector 1
+        let test_data: Vec<u8> = (0..512).map(|i| (i & 0xFF) as u8).collect();
+        disk.write_sector(0, 0, 1, &test_data).unwrap();
+
+        fdc.insert_disk(0, disk);
+
+        // Send Read Data command to read sector 1
+        fdc.write_u8(FDC_DATA, 0x66); // MF + SK + READ
+        fdc.write_u8(FDC_DATA, 0x00); // Drive 0, Head 0
+        fdc.write_u8(FDC_DATA, 0);    // Cylinder 0
+        fdc.write_u8(FDC_DATA, 0);    // Head 0
+        fdc.write_u8(FDC_DATA, 1);    // Sector 1
+        fdc.write_u8(FDC_DATA, 2);    // Sector size (512 bytes)
+        fdc.write_u8(FDC_DATA, 1);    // EOT = 1 (read only sector 1)
+        fdc.write_u8(FDC_DATA, 0x1B); // GPL
+        fdc.write_u8(FDC_DATA, 0xFF); // DTL
+
+        // Should be in execution phase with DMA pending
+        assert_eq!(fdc.phase, FdcPhase::Execution);
+        assert!(fdc.dma_pending);
+        assert!(fdc.dma_dreq());
+
+        // Verify transfer buffer has the data
+        assert_eq!(fdc.transfer_buffer.len(), 512);
+        assert_eq!(fdc.transfer_buffer[0], 0x00);
+        assert_eq!(fdc.transfer_buffer[255], 0xFF);
+
+        // Simulate DMA transfer
+        let mut dma_data = Vec::new();
+        while let Some(byte) = fdc.dma_read_byte() {
+            dma_data.push(byte);
+        }
+        assert_eq!(dma_data.len(), 512);
+
+        // Complete transfer (terminal count)
+        fdc.dma_terminal_count();
+
+        // Should be in result phase with success
+        assert_eq!(fdc.phase, FdcPhase::Result);
+
+        // Read result bytes
+        let st0 = fdc.read_u8(FDC_DATA);
+        let st1 = fdc.read_u8(FDC_DATA);
+        let st2 = fdc.read_u8(FDC_DATA);
+
+        // Should report normal termination
+        assert_eq!(st0 & ST0_IC_MASK, ST0_IC_NORMAL);
+        assert_eq!(st1, 0);
+        assert_eq!(st2, 0);
+    }
+
+    #[test]
+    fn test_write_data_with_disk() {
+        let mut fdc = Fdc::new();
+        fdc.write_u8(FDC_DOR, DOR_RESET | DOR_DMA_ENABLE);
+        fdc.pending_interrupts.clear();
+
+        // Create a writable disk
+        let geometry = DiskGeometry::new(40, 2, 9, 512);
+        let mut disk = FloppyDisk::new(geometry);
+        disk.set_write_protected(false);
+        fdc.insert_disk(0, disk);
+
+        // Send Write Data command
+        fdc.write_u8(FDC_DATA, 0x45); // MF + WRITE
+        fdc.write_u8(FDC_DATA, 0x00); // Drive 0, Head 0
+        fdc.write_u8(FDC_DATA, 0);    // Cylinder 0
+        fdc.write_u8(FDC_DATA, 0);    // Head 0
+        fdc.write_u8(FDC_DATA, 1);    // Sector 1
+        fdc.write_u8(FDC_DATA, 2);    // Sector size (512 bytes)
+        fdc.write_u8(FDC_DATA, 1);    // EOT = 1
+        fdc.write_u8(FDC_DATA, 0x1B); // GPL
+        fdc.write_u8(FDC_DATA, 0xFF); // DTL
+
+        // Should be in execution phase with DMA pending
+        assert_eq!(fdc.phase, FdcPhase::Execution);
+        assert!(fdc.dma_pending);
+
+        // Simulate DMA transfer of data to write
+        for i in 0..512u16 {
+            fdc.dma_write_byte((i & 0xFF) as u8);
+        }
+
+        // Complete transfer (terminal count)
+        fdc.dma_terminal_count();
+
+        // Should be in result phase
+        assert_eq!(fdc.phase, FdcPhase::Result);
+
+        // Read result bytes
+        let st0 = fdc.read_u8(FDC_DATA);
+        let st1 = fdc.read_u8(FDC_DATA);
+        let st2 = fdc.read_u8(FDC_DATA);
+
+        // Should report normal termination
+        assert_eq!(st0 & ST0_IC_MASK, ST0_IC_NORMAL);
+        assert_eq!(st1, 0);
+        assert_eq!(st2, 0);
+
+        // Verify data was written to disk
+        let disk = fdc.disks[0].as_ref().unwrap();
+        let sector_data = disk.read_sector(0, 0, 1).unwrap();
+        assert_eq!(sector_data[0], 0x00);
+        assert_eq!(sector_data[255], 0xFF);
+    }
+
+    #[test]
+    fn test_write_data_write_protected() {
+        let mut fdc = Fdc::new();
+        fdc.write_u8(FDC_DOR, DOR_RESET | DOR_DMA_ENABLE);
+        fdc.pending_interrupts.clear();
+
+        // Create a write-protected disk
+        let geometry = DiskGeometry::new(40, 2, 9, 512);
+        let mut disk = FloppyDisk::new(geometry);
+        disk.set_write_protected(true);
+        fdc.insert_disk(0, disk);
+
+        // Send Write Data command
+        fdc.write_u8(FDC_DATA, 0x45); // MF + WRITE
+        fdc.write_u8(FDC_DATA, 0x00);
+        fdc.write_u8(FDC_DATA, 0);
+        fdc.write_u8(FDC_DATA, 0);
+        fdc.write_u8(FDC_DATA, 1);
+        fdc.write_u8(FDC_DATA, 2);
+        fdc.write_u8(FDC_DATA, 1);
+        fdc.write_u8(FDC_DATA, 0x1B);
+        fdc.write_u8(FDC_DATA, 0xFF);
+
+        // Should immediately return error (no DMA)
+        assert_eq!(fdc.phase, FdcPhase::Result);
+        assert!(!fdc.dma_pending);
+
+        // Read result bytes
+        let st0 = fdc.read_u8(FDC_DATA);
+        let st1 = fdc.read_u8(FDC_DATA);
+
+        // Should report abnormal termination with Not Writable
+        assert_eq!(st0 & ST0_IC_MASK, ST0_IC_ABNORMAL);
+        assert_eq!(st1 & ST1_NW, ST1_NW);
+    }
+
+    #[test]
+    fn test_read_id_with_disk() {
+        let mut fdc = Fdc::new();
+        fdc.write_u8(FDC_DOR, DOR_RESET | DOR_DMA_ENABLE);
+        fdc.pending_interrupts.clear();
+
+        // Insert a disk
+        let geometry = DiskGeometry::new(40, 2, 9, 512);
+        let disk = FloppyDisk::new(geometry);
+        fdc.insert_disk(0, disk);
+
+        // Seek to cylinder 5
+        fdc.write_u8(FDC_DATA, CMD_SEEK);
+        fdc.write_u8(FDC_DATA, 0x00);
+        fdc.write_u8(FDC_DATA, 5);
+        fdc.pending_interrupts.clear();
+
+        // Send Read ID command
+        fdc.write_u8(FDC_DATA, 0x4A); // MF + READ_ID
+        fdc.write_u8(FDC_DATA, 0x00); // Drive 0, Head 0
+
+        // Should be in result phase
+        assert_eq!(fdc.phase, FdcPhase::Result);
+
+        // Read result bytes
+        let st0 = fdc.read_u8(FDC_DATA);
+        let st1 = fdc.read_u8(FDC_DATA);
+        let _st2 = fdc.read_u8(FDC_DATA);
+        let cyl = fdc.read_u8(FDC_DATA);
+        let head = fdc.read_u8(FDC_DATA);
+        let sector = fdc.read_u8(FDC_DATA);
+        let size = fdc.read_u8(FDC_DATA);
+
+        // Should report success with sector info
+        assert_eq!(st0 & ST0_IC_MASK, ST0_IC_NORMAL);
+        assert_eq!(st1, 0);
+        assert_eq!(cyl, 5);
+        assert_eq!(head, 0);
+        assert_eq!(sector, 1);
+        assert_eq!(size, 2); // 512 bytes
+    }
+
+    #[test]
+    fn test_sense_drive_status_with_disk() {
+        let mut fdc = Fdc::new();
+        fdc.write_u8(FDC_DOR, DOR_RESET | DOR_DMA_ENABLE);
+        fdc.pending_interrupts.clear();
+
+        // Without disk
+        fdc.write_u8(FDC_DATA, CMD_SENSE_DRIVE_STATUS);
+        fdc.write_u8(FDC_DATA, 0x00);
+        let st3_no_disk = fdc.read_u8(FDC_DATA);
+        // RDY bit should be 0 (no disk)
+        assert_eq!(st3_no_disk & 0x20, 0);
+
+        // Insert a write-protected disk
+        let geometry = DiskGeometry::new(40, 2, 9, 512);
+        let mut disk = FloppyDisk::new(geometry);
+        disk.set_write_protected(true);
+        fdc.insert_disk(0, disk);
+
+        // With disk (write-protected)
+        fdc.write_u8(FDC_DATA, CMD_SENSE_DRIVE_STATUS);
+        fdc.write_u8(FDC_DATA, 0x00);
+        let st3_with_disk = fdc.read_u8(FDC_DATA);
+        // RDY bit should be 1 (disk present)
+        assert_eq!(st3_with_disk & 0x20, 0x20);
+        // WP bit should be 1 (write-protected)
+        assert_eq!(st3_with_disk & 0x40, 0x40);
+    }
+
+    #[test]
+    fn test_format_track_with_disk() {
+        let mut fdc = Fdc::new();
+        fdc.write_u8(FDC_DOR, DOR_RESET | DOR_DMA_ENABLE);
+        fdc.pending_interrupts.clear();
+
+        // Create a writable disk
+        let geometry = DiskGeometry::new(40, 2, 9, 512);
+        let mut disk = FloppyDisk::new(geometry);
+        disk.set_write_protected(false);
+        fdc.insert_disk(0, disk);
+
+        // Seek to cylinder 1
+        fdc.write_u8(FDC_DATA, CMD_SEEK);
+        fdc.write_u8(FDC_DATA, 0x00);
+        fdc.write_u8(FDC_DATA, 1);
+        fdc.pending_interrupts.clear();
+
+        // Send Format Track command
+        fdc.write_u8(FDC_DATA, 0x4D); // MF + FORMAT
+        fdc.write_u8(FDC_DATA, 0x00); // Drive 0, Head 0
+        fdc.write_u8(FDC_DATA, 2);    // N (sector size 512)
+        fdc.write_u8(FDC_DATA, 9);    // SC (sectors per track)
+        fdc.write_u8(FDC_DATA, 0x1B); // GPL
+        fdc.write_u8(FDC_DATA, 0xAA); // Fill byte
+
+        // Should be in result phase
+        assert_eq!(fdc.phase, FdcPhase::Result);
+
+        // Read result bytes
+        let st0 = fdc.read_u8(FDC_DATA);
+        let st1 = fdc.read_u8(FDC_DATA);
+        let st2 = fdc.read_u8(FDC_DATA);
+
+        // Should report normal termination
+        assert_eq!(st0 & ST0_IC_MASK, ST0_IC_NORMAL);
+        assert_eq!(st1, 0);
+        assert_eq!(st2, 0);
+
+        // Verify track was formatted with fill byte
+        let disk = fdc.disks[0].as_ref().unwrap();
+        let sector_data = disk.read_sector(1, 0, 1).unwrap();
+        assert!(sector_data.iter().all(|&b| b == 0xAA));
     }
 }

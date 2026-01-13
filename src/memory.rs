@@ -7,6 +7,7 @@
 
 use crate::components::dma::{Dma, DmaCapable, DmaDirection};
 use crate::components::fdc::Fdc;
+use crate::components::floppy::FloppyDisk;
 use crate::components::mda::Mda;
 use crate::components::pic::Pic;
 use crate::io::IoDevice;
@@ -97,6 +98,13 @@ impl MemoryBus {
         // Load ROM at the end of ROM space
         let offset = self.rom.len() - rom_data.len();
         self.rom[offset..].copy_from_slice(rom_data);
+    }
+
+    /// Insert a floppy disk into a drive
+    ///
+    /// Drive 0 = A:, Drive 1 = B:, etc.
+    pub fn insert_floppy(&mut self, drive: u8, disk: FloppyDisk) {
+        self.fdc.insert_disk(drive, disk);
     }
 
     /// Read a byte from memory
