@@ -23,7 +23,7 @@ const PPI_PORT_C: u16 = 0x62; // System control port C
 /// Bits 3-2: RAM size (11 = 64K)
 /// Bit 1: 8087 installed (0 = no)
 /// Bit 0: Floppy installed (0 = yes)
-const DIP_SWITCHES: u8 = 0b00111100; // 0x3C
+const DIP_SWITCHES: u8 = 0b00111101; // 0xFC
 
 /// Keyboard reset state machine
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
