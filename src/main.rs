@@ -251,7 +251,9 @@ fn main() {
                 println!("Options:");
                 println!("  -a, --floppy-a <PATH>  Disk image for drive A: (first floppy)");
                 println!("  -b, --floppy-b <PATH>  Disk image for drive B: (second floppy)");
-                println!("  -w, --writable         Allow writes to disk images (default: read-only)");
+                println!(
+                    "  -w, --writable         Allow writes to disk images (default: read-only)"
+                );
                 println!("  --gdb <socket-path>    Enable GDB remote debugging on Unix socket");
                 println!("  --help, -h             Show this help message");
                 println!();

@@ -214,12 +214,18 @@ impl FloppyDisk {
             ));
         }
 
-        let offset = self.geometry.chs_to_offset(cylinder, head, sector).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("Invalid CHS address: C={}, H={}, S={}", cylinder, head, sector),
-            )
-        })?;
+        let offset = self
+            .geometry
+            .chs_to_offset(cylinder, head, sector)
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!(
+                        "Invalid CHS address: C={}, H={}, S={}",
+                        cylinder, head, sector
+                    ),
+                )
+            })?;
 
         let sector_size = self.geometry.bytes_per_sector as usize;
         let end = offset + sector_size;
@@ -245,12 +251,7 @@ impl FloppyDisk {
     }
 
     /// Format a track (fill all sectors with a pattern)
-    pub fn format_track(
-        &mut self,
-        cylinder: u8,
-        head: u8,
-        fill_byte: u8,
-    ) -> io::Result<()> {
+    pub fn format_track(&mut self, cylinder: u8, head: u8, fill_byte: u8) -> io::Result<()> {
         if self.write_protected {
             return Err(io::Error::new(
                 io::ErrorKind::PermissionDenied,
@@ -276,9 +277,10 @@ impl FloppyDisk {
 
     /// Save changes back to the source file
     pub fn save(&mut self) -> io::Result<()> {
-        let path = self.path.as_ref().ok_or_else(|| {
-            io::Error::new(io::ErrorKind::NotFound, "No source file path")
-        })?;
+        let path = self
+            .path
+            .as_ref()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "No source file path"))?;
 
         if self.write_protected {
             return Err(io::Error::new(
@@ -287,10 +289,7 @@ impl FloppyDisk {
             ));
         }
 
-        let mut file = OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .open(path)?;
+        let mut file = OpenOptions::new().write(true).truncate(true).open(path)?;
 
         file.write_all(&self.data)?;
         self.dirty = false;

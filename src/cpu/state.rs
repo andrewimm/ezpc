@@ -1104,6 +1104,13 @@ impl Cpu {
         // If interrupt recognition is delayed (after STI), skip this check
         // and clear the delay flag for next instruction
         if self.delay_interrupt {
+            #[cfg(debug_assertions)]
+            {
+                // Only log if there's actually a pending interrupt we're delaying
+                if mem.pic().intr_out() {
+                    println!("[CPU] check_interrupts: delay_interrupt set, skipping (PIC has pending IRQ)");
+                }
+            }
             self.delay_interrupt = false;
             return;
         }
