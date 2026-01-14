@@ -40,7 +40,15 @@ impl EmulatorState {
         rom_data: Option<Vec<u8>>,
         gdb_socket_path: Option<&str>,
     ) -> Self {
-        Self::with_floppies(device, queue, surface_format, rom_data, gdb_socket_path, None, None)
+        Self::with_floppies(
+            device,
+            queue,
+            surface_format,
+            rom_data,
+            gdb_socket_path,
+            None,
+            None,
+        )
     }
 
     /// Create a new emulator state with floppy disk images
@@ -131,6 +139,13 @@ impl EmulatorState {
         while self.cpu.total_cycles < target_cycles {
             let cycles = self.cpu.step(&mut self.memory);
             self.memory.tick(cycles);
+
+            // Process FDC DMA transfers
+            // In real hardware, DMA happens during CPU wait states.
+            // We process transfers after each instruction.
+            while self.memory.fdc_dma_tick().is_some() {
+                // Continue transferring until no more data or terminal count
+            }
 
             // Check for breakpoints and single-step after each instruction
             if let Some(ref mut debugger) = self.debugger {

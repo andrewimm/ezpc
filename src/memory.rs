@@ -423,8 +423,13 @@ impl MemoryBus {
     /// Returns `Some(true)` if terminal count was reached, `Some(false)` if
     /// a byte was transferred, or `None` if no transfer occurred.
     pub fn fdc_dma_tick(&mut self) -> Option<bool> {
-        // Check if FDC is requesting DMA and channel 2 is active
-        if !self.fdc.dma_dreq() || !self.dma.is_channel_active(2) {
+        // Propagate FDC's DREQ signal to DMA controller channel 2
+        // In real hardware, this is a direct electrical connection
+        let fdc_dreq = self.fdc.dma_dreq();
+        self.dma.set_dreq(2, fdc_dreq);
+
+        // Check if channel 2 is active (DREQ set, not masked, valid mode)
+        if !self.dma.is_channel_active(2) {
             return None;
         }
 
