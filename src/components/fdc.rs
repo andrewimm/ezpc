@@ -190,7 +190,7 @@ pub struct Fdc {
     dma_pending: bool,
     transfer_buffer: Vec<u8>,
     transfer_index: usize,
-    transfer_drive: u8,    // Drive being used for current transfer
+    transfer_drive: u8,      // Drive being used for current transfer
     transfer_is_write: bool, // true = write to disk, false = read from disk
 
     // Interrupt state
@@ -301,6 +301,9 @@ impl Fdc {
 
     /// Complete reset sequence (DOR bit 2 goes high)
     fn complete_reset(&mut self) {
+        #[cfg(debug_assertions)]
+        println!("[FDC] complete_reset: Exiting reset, queuing 4 interrupts");
+
         // Reset drive positions
         for drive in &mut self.drives {
             drive.reset();
@@ -316,6 +319,13 @@ impl Fdc {
 
         self.irq_pending = true;
         self.reset_pending = false;
+
+        #[cfg(debug_assertions)]
+        println!(
+            "[FDC] complete_reset: irq_pending={}, pending_interrupts={}",
+            self.irq_pending,
+            self.pending_interrupts.len()
+        );
     }
 
     /// Build the Main Status Register value
@@ -383,11 +393,25 @@ impl Fdc {
 
     /// Handle a command byte written to the data register
     fn write_command_byte(&mut self, value: u8) {
+        #[cfg(debug_assertions)]
+        println!(
+            "[FDC] write_command_byte: 0x{:02X}, phase={:?}, buffer_len={}",
+            value,
+            self.phase,
+            self.command_buffer.len()
+        );
+
         if self.phase == FdcPhase::Idle {
             // First byte - determine command
             self.command_buffer.clear();
             self.command_buffer.push(value);
             self.command_bytes_expected = Self::command_length(value);
+
+            #[cfg(debug_assertions)]
+            println!(
+                "[FDC] New command 0x{:02X}, expecting {} bytes",
+                value, self.command_bytes_expected
+            );
 
             if self.command_bytes_expected == 1 {
                 // Single-byte command, execute immediately
@@ -397,6 +421,14 @@ impl Fdc {
             }
         } else if self.phase == FdcPhase::Command {
             self.command_buffer.push(value);
+
+            #[cfg(debug_assertions)]
+            println!(
+                "[FDC] Command byte {}/{}: 0x{:02X}",
+                self.command_buffer.len(),
+                self.command_bytes_expected,
+                value
+            );
 
             if self.command_buffer.len() >= self.command_bytes_expected {
                 self.execute_command();
@@ -487,13 +519,23 @@ impl Fdc {
         let byte1 = self.command_buffer.get(1).copied().unwrap_or(0);
         let drive = (byte1 & 0x03) as usize;
 
+        #[cfg(debug_assertions)]
+        println!("[FDC] RECALIBRATE: drive={}", drive);
+
         // Move head to track 0
         self.drives[drive].cylinder = 0;
 
         // Queue interrupt with seek end status
+        // Use push_front so command results have priority over any pending reset interrupts
         let st0 = ST0_IC_NORMAL | ST0_SE | (drive as u8);
-        self.pending_interrupts.push_back((st0, 0));
+        self.pending_interrupts.push_front((st0, 0));
         self.irq_pending = true;
+
+        #[cfg(debug_assertions)]
+        println!(
+            "[FDC] RECALIBRATE: queued interrupt ST0=0x{:02X}, irq_pending={}",
+            st0, self.irq_pending
+        );
 
         // No result phase - must use Sense Interrupt Status
         self.phase = FdcPhase::Idle;
@@ -505,16 +547,30 @@ impl Fdc {
         self.result_buffer.clear();
 
         if let Some((st0, cylinder)) = self.pending_interrupts.pop_front() {
+            #[cfg(debug_assertions)]
+            println!(
+                "[FDC] SENSE INTERRUPT: ST0=0x{:02X}, cylinder={}, remaining={}",
+                st0,
+                cylinder,
+                self.pending_interrupts.len()
+            );
+
             self.result_buffer.push(st0);
             self.result_buffer.push(cylinder);
             self.result_index = 0;
             self.phase = FdcPhase::Result;
 
-            // Clear IRQ if no more pending interrupts
-            if self.pending_interrupts.is_empty() {
-                self.irq_pending = false;
-            }
+            // Clear IRQ after SENSE INTERRUPT STATUS
+            // The IRQ line stays LOW until a new command generates an interrupt
+            // (RECALIBRATE, SEEK, or data transfer completion)
+            // We do NOT re-assert for remaining reset polling entries - the BIOS
+            // should call SENSE INTERRUPT STATUS multiple times without expecting
+            // new interrupts for each one.
+            self.irq_pending = false;
         } else {
+            #[cfg(debug_assertions)]
+            println!("[FDC] SENSE INTERRUPT: No pending interrupt (invalid)");
+
             // No pending interrupt - invalid command
             self.result_buffer.push(ST0_IC_INVALID);
             self.result_index = 0;
@@ -540,8 +596,9 @@ impl Fdc {
         self.drives[drive].cylinder = new_cylinder;
 
         // Queue interrupt with seek end status
+        // Use push_front so command results have priority over any pending reset interrupts
         let st0 = ST0_IC_NORMAL | ST0_SE | (drive as u8);
-        self.pending_interrupts.push_back((st0, new_cylinder));
+        self.pending_interrupts.push_front((st0, new_cylinder));
         self.irq_pending = true;
 
         // No result phase - must use Sense Interrupt Status
@@ -591,7 +648,8 @@ impl Fdc {
 
         while current_sector <= self.eot {
             if let Some(sector_data) = disk.read_sector(cylinder, head_param, current_sector) {
-                self.transfer_buffer.extend_from_slice(&sector_data[..sector_bytes.min(sector_data.len())]);
+                self.transfer_buffer
+                    .extend_from_slice(&sector_data[..sector_bytes.min(sector_data.len())]);
                 current_sector += 1;
             } else {
                 // Sector not found
@@ -841,7 +899,9 @@ impl Fdc {
             if let Some(disk) = self.disks[drive as usize].as_mut() {
                 while offset + sector_bytes <= self.transfer_buffer.len() {
                     let sector_data = &self.transfer_buffer[offset..offset + sector_bytes];
-                    if let Err(_) = disk.write_sector(cylinder, head_param, current_sector, sector_data) {
+                    if let Err(_) =
+                        disk.write_sector(cylinder, head_param, current_sector, sector_data)
+                    {
                         error_st1 = ST1_NW;
                         break;
                     }
@@ -909,12 +969,25 @@ impl IoDevice for Fdc {
                 let old_dor = self.dor;
                 self.dor = value;
 
+                #[cfg(debug_assertions)]
+                if old_dor != value {
+                    println!(
+                        "[FDC] DOR write: 0x{:02X} -> 0x{:02X} (reset: {} -> {})",
+                        old_dor,
+                        value,
+                        (old_dor & DOR_RESET) != 0,
+                        (value & DOR_RESET) != 0
+                    );
+                }
+
                 // Check for reset transition (bit 2: 0->1 = exit reset)
                 if (old_dor & DOR_RESET) == 0 && (value & DOR_RESET) != 0 {
                     // Exiting reset - complete reset sequence and generate interrupts
                     self.complete_reset();
                 } else if (old_dor & DOR_RESET) != 0 && (value & DOR_RESET) == 0 {
                     // Entering reset - clear state
+                    #[cfg(debug_assertions)]
+                    println!("[FDC] DOR: ENTERING RESET - clearing pending interrupts!");
                     self.enter_reset();
                 }
 
@@ -942,8 +1015,27 @@ impl IoDevice for Fdc {
     }
 
     fn tick(&mut self, _cycles: u16, pic: &mut Pic) {
-        // Handle IRQ6 signaling
-        if self.irq_pending && (self.dor & DOR_DMA_ENABLE) != 0 {
+        // Handle IRQ6 signaling FIRST
+        // This ensures the IRQ line goes LOW before we re-assert for edge detection
+        let should_signal = self.irq_pending && (self.dor & DOR_DMA_ENABLE) != 0;
+
+        #[cfg(debug_assertions)]
+        {
+            static mut LAST_SIGNAL: bool = false;
+            // Only print on transitions to reduce noise
+            if should_signal != unsafe { LAST_SIGNAL } {
+                println!(
+                    "[FDC] tick: IRQ6 {} (irq_pending={}, dor=0x{:02X}, IMR=0x{:02X})",
+                    if should_signal { "HIGH" } else { "LOW" },
+                    self.irq_pending,
+                    self.dor,
+                    pic.get_imr()
+                );
+                unsafe { LAST_SIGNAL = should_signal };
+            }
+        }
+
+        if should_signal {
             pic.set_irq_level(6, true);
         } else {
             pic.set_irq_level(6, false);
@@ -1272,11 +1364,11 @@ mod tests {
         // Send Read Data command to read sector 1
         fdc.write_u8(FDC_DATA, 0x66); // MF + SK + READ
         fdc.write_u8(FDC_DATA, 0x00); // Drive 0, Head 0
-        fdc.write_u8(FDC_DATA, 0);    // Cylinder 0
-        fdc.write_u8(FDC_DATA, 0);    // Head 0
-        fdc.write_u8(FDC_DATA, 1);    // Sector 1
-        fdc.write_u8(FDC_DATA, 2);    // Sector size (512 bytes)
-        fdc.write_u8(FDC_DATA, 1);    // EOT = 1 (read only sector 1)
+        fdc.write_u8(FDC_DATA, 0); // Cylinder 0
+        fdc.write_u8(FDC_DATA, 0); // Head 0
+        fdc.write_u8(FDC_DATA, 1); // Sector 1
+        fdc.write_u8(FDC_DATA, 2); // Sector size (512 bytes)
+        fdc.write_u8(FDC_DATA, 1); // EOT = 1 (read only sector 1)
         fdc.write_u8(FDC_DATA, 0x1B); // GPL
         fdc.write_u8(FDC_DATA, 0xFF); // DTL
 
@@ -1329,11 +1421,11 @@ mod tests {
         // Send Write Data command
         fdc.write_u8(FDC_DATA, 0x45); // MF + WRITE
         fdc.write_u8(FDC_DATA, 0x00); // Drive 0, Head 0
-        fdc.write_u8(FDC_DATA, 0);    // Cylinder 0
-        fdc.write_u8(FDC_DATA, 0);    // Head 0
-        fdc.write_u8(FDC_DATA, 1);    // Sector 1
-        fdc.write_u8(FDC_DATA, 2);    // Sector size (512 bytes)
-        fdc.write_u8(FDC_DATA, 1);    // EOT = 1
+        fdc.write_u8(FDC_DATA, 0); // Cylinder 0
+        fdc.write_u8(FDC_DATA, 0); // Head 0
+        fdc.write_u8(FDC_DATA, 1); // Sector 1
+        fdc.write_u8(FDC_DATA, 2); // Sector size (512 bytes)
+        fdc.write_u8(FDC_DATA, 1); // EOT = 1
         fdc.write_u8(FDC_DATA, 0x1B); // GPL
         fdc.write_u8(FDC_DATA, 0xFF); // DTL
 
@@ -1497,8 +1589,8 @@ mod tests {
         // Send Format Track command
         fdc.write_u8(FDC_DATA, 0x4D); // MF + FORMAT
         fdc.write_u8(FDC_DATA, 0x00); // Drive 0, Head 0
-        fdc.write_u8(FDC_DATA, 2);    // N (sector size 512)
-        fdc.write_u8(FDC_DATA, 9);    // SC (sectors per track)
+        fdc.write_u8(FDC_DATA, 2); // N (sector size 512)
+        fdc.write_u8(FDC_DATA, 9); // SC (sectors per track)
         fdc.write_u8(FDC_DATA, 0x1B); // GPL
         fdc.write_u8(FDC_DATA, 0xAA); // Fill byte
 
