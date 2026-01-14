@@ -13,6 +13,19 @@ const PIC_DATA_PORT: u16 = 0x21;
 /// EOI (End of Interrupt) command
 const EOI_COMMAND: u8 = 0x20;
 
+/// Initialization sequence state
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum InitState {
+    /// Normal operation mode - data port writes go to IMR
+    Ready,
+    /// Waiting for ICW2 (vector offset)
+    WaitIcw2,
+    /// Waiting for ICW3 (cascade mode only - not used in IBM PC)
+    WaitIcw3,
+    /// Waiting for ICW4 (if IC4 bit was set in ICW1)
+    WaitIcw4,
+}
+
 /// Intel 8259 PIC state
 ///
 /// The 8259 manages 8 IRQ lines (IRQ0-IRQ7) and converts them into
@@ -36,6 +49,21 @@ pub struct Pic {
     /// Base interrupt vector offset (configured via ICW2)
     /// For IBM PC: typically 0x08 for IRQ0-7 -> INT 0x08-0x0F
     vector_offset: u8,
+
+    /// Initialization sequence state
+    init_state: InitState,
+
+    /// ICW1 flags stored during initialization
+    /// Bit 0 (IC4): 1 = ICW4 needed
+    /// Bit 1 (SNGL): 1 = single mode (no cascade)
+    icw1_flags: u8,
+
+    /// Auto EOI mode (from ICW4 bit 1)
+    auto_eoi: bool,
+
+    /// Read register select (from OCW3)
+    /// false = read IRR, true = read ISR
+    read_isr: bool,
 }
 
 impl Pic {
@@ -50,6 +78,10 @@ impl Pic {
             isr: 0,
             irq_prev: 0,
             vector_offset,
+            init_state: InitState::Ready,
+            icw1_flags: 0,
+            auto_eoi: false,
+            read_isr: false,
         }
     }
 
@@ -172,13 +204,12 @@ impl IoDevice for Pic {
     fn read_u8(&mut self, port: u16) -> u8 {
         match port {
             PIC_COMMAND_PORT => {
-                // Reading from command port typically returns ISR or IRR
-                // For now, return IRR as a simple implementation
-                println!(
-                    "[PIC] Read from command port 0x{:04X} - returning IRR",
-                    port
-                );
-                self.irr
+                // Reading from command port returns ISR or IRR based on OCW3 setting
+                if self.read_isr {
+                    self.isr
+                } else {
+                    self.irr
+                }
             }
             PIC_DATA_PORT => {
                 // Reading from data port returns IMR
@@ -194,21 +225,127 @@ impl IoDevice for Pic {
     fn write_u8(&mut self, port: u16, value: u8) {
         match port {
             PIC_COMMAND_PORT => {
-                // Command port handles various operations
-                if value == EOI_COMMAND {
-                    // Non-specific EOI - clear highest priority ISR bit
-                    self.eoi();
-                } else {
-                    // Other commands need implementation
+                // Check if this is ICW1 (bit 4 set)
+                if (value & 0x10) != 0 {
+                    // ICW1 - start initialization sequence
+                    #[cfg(debug_assertions)]
                     println!(
-                        "[PIC] Unhandled command port write: 0x{:04X} = 0x{:02X}",
-                        port, value
+                        "[PIC] ICW1: 0x{:02X} (IC4={}, SNGL={})",
+                        value,
+                        (value & 0x01) != 0,
+                        (value & 0x02) != 0
                     );
+
+                    self.icw1_flags = value;
+                    self.init_state = InitState::WaitIcw2;
+
+                    // ICW1 clears ISR and IMR
+                    self.isr = 0;
+                    self.imr = 0;
+                    self.read_isr = false;
+                } else if (value & 0x08) != 0 {
+                    // OCW3 - bits 4:3 = 01
+                    // Bit 1:0 determine read register select
+                    if (value & 0x02) != 0 {
+                        self.read_isr = (value & 0x01) != 0;
+                        #[cfg(debug_assertions)]
+                        println!(
+                            "[PIC] OCW3: read {} on next command port read",
+                            if self.read_isr { "ISR" } else { "IRR" }
+                        );
+                    }
+                } else {
+                    // OCW2 - bits 4:3 = 00
+                    // Handle EOI commands
+                    let eoi_type = (value >> 5) & 0x07;
+                    match eoi_type {
+                        0b001 => {
+                            // Non-specific EOI
+                            self.eoi();
+                        }
+                        0b011 => {
+                            // Specific EOI - clear specific IRQ from ISR
+                            let irq = value & 0x07;
+                            self.isr &= !(1 << irq);
+                            #[cfg(debug_assertions)]
+                            println!("[PIC] Specific EOI for IRQ{}", irq);
+                        }
+                        _ => {
+                            #[cfg(debug_assertions)]
+                            println!("[PIC] OCW2 command: 0x{:02X} (type {})", value, eoi_type);
+                        }
+                    }
                 }
             }
             PIC_DATA_PORT => {
-                // Data port is used to set the IMR
-                self.imr = value;
+                // Data port behavior depends on initialization state
+                match self.init_state {
+                    InitState::WaitIcw2 => {
+                        // ICW2 - interrupt vector offset (upper 5 bits)
+                        self.vector_offset = value & 0xF8;
+                        #[cfg(debug_assertions)]
+                        println!("[PIC] ICW2: vector offset = 0x{:02X}", self.vector_offset);
+
+                        // Check if we need ICW3 (cascade mode)
+                        if (self.icw1_flags & 0x02) == 0 {
+                            // Cascade mode - need ICW3
+                            self.init_state = InitState::WaitIcw3;
+                        } else if (self.icw1_flags & 0x01) != 0 {
+                            // Single mode, ICW4 needed
+                            self.init_state = InitState::WaitIcw4;
+                        } else {
+                            // Single mode, no ICW4
+                            self.init_state = InitState::Ready;
+                            #[cfg(debug_assertions)]
+                            println!("[PIC] Initialization complete (no ICW4)");
+                        }
+                    }
+                    InitState::WaitIcw3 => {
+                        // ICW3 - cascade configuration (not used in IBM PC)
+                        #[cfg(debug_assertions)]
+                        println!("[PIC] ICW3: 0x{:02X} (cascade config)", value);
+
+                        if (self.icw1_flags & 0x01) != 0 {
+                            self.init_state = InitState::WaitIcw4;
+                        } else {
+                            self.init_state = InitState::Ready;
+                            #[cfg(debug_assertions)]
+                            println!("[PIC] Initialization complete (no ICW4)");
+                        }
+                    }
+                    InitState::WaitIcw4 => {
+                        // ICW4 - mode configuration
+                        self.auto_eoi = (value & 0x02) != 0;
+                        #[cfg(debug_assertions)]
+                        println!(
+                            "[PIC] ICW4: 0x{:02X} (8086 mode={}, AEOI={})",
+                            value,
+                            (value & 0x01) != 0,
+                            self.auto_eoi
+                        );
+
+                        self.init_state = InitState::Ready;
+                        #[cfg(debug_assertions)]
+                        println!("[PIC] Initialization complete");
+                    }
+                    InitState::Ready => {
+                        // Normal operation - write to IMR (OCW1)
+                        #[cfg(debug_assertions)]
+                        if self.imr != value {
+                            println!(
+                                "[PIC] IMR change: 0x{:02X} -> 0x{:02X} (IRQ6 {})",
+                                self.imr,
+                                value,
+                                if (value & 0x40) != 0 {
+                                    "MASKED"
+                                } else {
+                                    "enabled"
+                                }
+                            );
+                        }
+                        self.imr = value;
+                    }
+                }
             }
             _ => {
                 println!(
@@ -444,5 +581,57 @@ mod tests {
         // Unmask IRQ1
         pic.write_u8(PIC_DATA_PORT, 0xFD); // All except bit 1
         assert!(pic.intr_out()); // Should now signal interrupt
+    }
+
+    #[test]
+    fn test_icw_initialization_sequence() {
+        let mut pic = Pic::new(0x00); // Initial offset doesn't matter
+
+        // IBM PC BIOS initialization sequence:
+        // ICW1: 0x13 = single mode, ICW4 needed
+        pic.write_u8(PIC_COMMAND_PORT, 0x13);
+        // After ICW1, ISR and IMR should be cleared
+        assert_eq!(pic.get_isr(), 0);
+        assert_eq!(pic.get_imr(), 0);
+
+        // ICW2: vector offset = 0x08
+        pic.write_u8(PIC_DATA_PORT, 0x08);
+        // Vector offset should be set
+        let vector_offset = pic.vector_offset;
+        assert_eq!(vector_offset, 0x08);
+
+        // ICW4: 0x09 = 8086 mode, normal EOI
+        pic.write_u8(PIC_DATA_PORT, 0x09);
+
+        // Now in ready state - writes to data port should be IMR
+        pic.write_u8(PIC_DATA_PORT, 0xFB); // Mask all except IRQ2
+        assert_eq!(pic.get_imr(), 0xFB);
+
+        // Verify interrupt delivery with new vector offset
+        pic.set_irq_level(2, false);
+        pic.set_irq_level(2, true);
+        let vector = pic.inta();
+        assert_eq!(vector, 0x08 + 2); // Should be 0x0A
+    }
+
+    #[test]
+    fn test_icw_reinit_does_not_corrupt_imr() {
+        let mut pic = Pic::new(0x08);
+
+        // Set initial IMR
+        pic.write_u8(PIC_DATA_PORT, 0x55);
+        assert_eq!(pic.get_imr(), 0x55);
+
+        // Start reinitialization - this should clear IMR
+        pic.write_u8(PIC_COMMAND_PORT, 0x13);
+        assert_eq!(pic.get_imr(), 0); // ICW1 clears IMR
+
+        // Complete initialization sequence
+        pic.write_u8(PIC_DATA_PORT, 0x08); // ICW2
+        pic.write_u8(PIC_DATA_PORT, 0x09); // ICW4
+
+        // Now write to IMR
+        pic.write_u8(PIC_DATA_PORT, 0xAA);
+        assert_eq!(pic.get_imr(), 0xAA); // Should update IMR, not something else
     }
 }
