@@ -6,7 +6,9 @@
 
 use crate::cpu::decode::instruction::DecodedInstruction;
 use crate::cpu::decode::operands::Operand;
-use crate::cpu::timing::{calculate_total_ea_cycles, BASE_CYCLES};
+use crate::cpu::timing::{
+    calculate_memory_timing, calculate_total_ea_cycles, BASE_CYCLES, WORD_TRANSFER_PENALTY,
+};
 use crate::cpu::Cpu;
 use crate::memory::MemoryBus;
 
@@ -822,7 +824,21 @@ impl Cpu {
         let base_cycles = BASE_CYCLES[opcode as usize];
         let ea_cycles = calculate_total_ea_cycles(&instr.dst, &instr.src);
 
-        instr.with_timing(base_cycles, ea_cycles)
+        // Calculate extra cycles for memory operand variants
+        let (memory_extra, is_16bit_mem) = calculate_memory_timing(opcode, &instr.dst, &instr.src);
+
+        // Apply word transfer penalty for 16-bit memory accesses on the 8088's 8-bit bus
+        let word_penalty = if is_16bit_mem {
+            WORD_TRANSFER_PENALTY
+        } else {
+            0
+        };
+
+        let total_base = base_cycles
+            .saturating_add(memory_extra)
+            .saturating_add(word_penalty);
+
+        instr.with_timing(total_base, ea_cycles)
     }
 
     /// Helper: Decode ModR/M byte and return (dst, src, length)

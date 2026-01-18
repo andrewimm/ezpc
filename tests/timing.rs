@@ -314,3 +314,147 @@ fn test_sti_cycles() {
 
     assert_eq!(step_cycles, 2, "STI should take 2 cycles");
 }
+
+/// Test MOV AX, [BX] timing (8 + EA + word penalty)
+/// Intel 8088: 8 + 5 EA + 4 word penalty = 17 cycles
+#[test]
+fn test_mov_reg_mem_word_cycles() {
+    let mut harness = ezpc::cpu::CpuHarness::new();
+    // MOV AX, [BX] = 8B 07
+    harness.load_program(&[0x8B, 0x07], 0);
+    harness.cpu.regs[3] = 0x100; // BX
+
+    let cycles = harness.step();
+
+    // 8 base + 5 EA ([BX]) + 4 word penalty = 17
+    assert_eq!(
+        cycles, 17,
+        "MOV AX, [BX] should take 17 cycles (8 base + 5 EA + 4 word)"
+    );
+}
+
+/// Test MOV [BX], AX timing (9 + EA + word penalty)
+/// Intel 8088: 9 + 5 EA + 4 word penalty = 18 cycles
+#[test]
+fn test_mov_mem_reg_word_cycles() {
+    let mut harness = ezpc::cpu::CpuHarness::new();
+    // MOV [BX], AX = 89 07
+    harness.load_program(&[0x89, 0x07], 0);
+    harness.cpu.regs[3] = 0x100; // BX
+
+    let cycles = harness.step();
+
+    // 9 base + 5 EA ([BX]) + 4 word penalty = 18
+    assert_eq!(
+        cycles, 18,
+        "MOV [BX], AX should take 18 cycles (9 base + 5 EA + 4 word)"
+    );
+}
+
+/// Test MOV AL, [BX] timing (8 + EA, no word penalty for byte)
+/// Intel 8088: 8 + 5 EA = 13 cycles
+#[test]
+fn test_mov_reg_mem_byte_cycles() {
+    let mut harness = ezpc::cpu::CpuHarness::new();
+    // MOV AL, [BX] = 8A 07
+    harness.load_program(&[0x8A, 0x07], 0);
+    harness.cpu.regs[3] = 0x100; // BX
+
+    let cycles = harness.step();
+
+    // 8 base + 5 EA ([BX]) = 13
+    assert_eq!(
+        cycles, 13,
+        "MOV AL, [BX] should take 13 cycles (8 base + 5 EA)"
+    );
+}
+
+/// Test ADD AX, [BX] timing (9 + EA + word penalty)
+/// Intel 8088: 9 + 5 EA + 4 word penalty = 18 cycles
+#[test]
+fn test_add_reg_mem_word_cycles() {
+    let mut harness = ezpc::cpu::CpuHarness::new();
+    // ADD AX, [BX] = 03 07
+    harness.load_program(&[0x03, 0x07], 0);
+    harness.cpu.regs[3] = 0x100; // BX
+
+    let cycles = harness.step();
+
+    // 9 base + 5 EA ([BX]) + 4 word penalty = 18
+    assert_eq!(
+        cycles, 18,
+        "ADD AX, [BX] should take 18 cycles (9 base + 5 EA + 4 word)"
+    );
+}
+
+/// Test ADD [BX], AX timing (16 + EA + word penalty)
+/// Intel 8088: 16 + 5 EA + 4 word penalty = 25 cycles
+#[test]
+fn test_add_mem_reg_word_cycles() {
+    let mut harness = ezpc::cpu::CpuHarness::new();
+    // ADD [BX], AX = 01 07
+    harness.load_program(&[0x01, 0x07], 0);
+    harness.cpu.regs[3] = 0x100; // BX
+
+    let cycles = harness.step();
+
+    // 16 base + 5 EA ([BX]) + 4 word penalty = 25
+    assert_eq!(
+        cycles, 25,
+        "ADD [BX], AX should take 25 cycles (16 base + 5 EA + 4 word)"
+    );
+}
+
+/// Test ADD AL, [BX] timing (9 + EA, no word penalty for byte)
+/// Intel 8088: 9 + 5 EA = 14 cycles
+#[test]
+fn test_add_reg_mem_byte_cycles() {
+    let mut harness = ezpc::cpu::CpuHarness::new();
+    // ADD AL, [BX] = 02 07
+    harness.load_program(&[0x02, 0x07], 0);
+    harness.cpu.regs[3] = 0x100; // BX
+
+    let cycles = harness.step();
+
+    // 9 base + 5 EA ([BX]) = 14
+    assert_eq!(
+        cycles, 14,
+        "ADD AL, [BX] should take 14 cycles (9 base + 5 EA)"
+    );
+}
+
+/// Test ADD [BX], AL timing (16 + EA, no word penalty for byte)
+/// Intel 8088: 16 + 5 EA = 21 cycles
+#[test]
+fn test_add_mem_reg_byte_cycles() {
+    let mut harness = ezpc::cpu::CpuHarness::new();
+    // ADD [BX], AL = 00 07
+    harness.load_program(&[0x00, 0x07], 0);
+    harness.cpu.regs[3] = 0x100; // BX
+
+    let cycles = harness.step();
+
+    // 16 base + 5 EA ([BX]) = 21
+    assert_eq!(
+        cycles, 21,
+        "ADD [BX], AL should take 21 cycles (16 base + 5 EA)"
+    );
+}
+
+/// Test memory operand with displacement adds extra EA cycles
+/// [BX+disp8] = 5 base + 4 disp = 9 EA cycles
+#[test]
+fn test_mov_with_displacement_cycles() {
+    let mut harness = ezpc::cpu::CpuHarness::new();
+    // MOV AX, [BX+0x10] = 8B 47 10
+    harness.load_program(&[0x8B, 0x47, 0x10], 0);
+    harness.cpu.regs[3] = 0x100; // BX
+
+    let cycles = harness.step();
+
+    // 8 base + 9 EA ([BX+disp] = 5+4) + 4 word penalty = 21
+    assert_eq!(
+        cycles, 21,
+        "MOV AX, [BX+disp8] should take 21 cycles (8 base + 9 EA + 4 word)"
+    );
+}

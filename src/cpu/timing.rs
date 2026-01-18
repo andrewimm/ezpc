@@ -189,15 +189,118 @@ pub fn is_memory_operand(operand: &Operand) -> bool {
     )
 }
 
-/// Additional cycles for instructions with memory destination vs memory source
+/// Extra cycles when reading from memory (reg, mem pattern)
 ///
-/// Many instructions have different timing when writing to memory vs reading from it.
-/// For example:
-/// - ADD r, r/m: 3 cycles (reg-reg) or 9+EA (reg-mem read)
-/// - ADD r/m, r: 3 cycles (reg-reg) or 16+EA (mem-reg write)
+/// Intel 8088 timings:
+/// - MOV reg, mem: 8+EA (reg-reg is 2, so +6)
+/// - ADD/SUB/etc reg, mem: 9+EA (reg-reg is 3, so +6)
+pub const MEMORY_READ_EXTRA_CYCLES: u8 = 6;
+
+/// Extra cycles for simple memory writes (mem, reg pattern for MOV)
 ///
-/// This returns the additional cycles for memory destination operations.
-pub const MEMORY_DEST_EXTRA_CYCLES: u8 = 7; // 16+EA vs 9+EA = 7 extra for mem dest
+/// Intel 8088 timing:
+/// - MOV mem, reg: 9+EA (reg-reg is 2, so +7)
+pub const MEMORY_WRITE_SIMPLE_EXTRA_CYCLES: u8 = 7;
+
+/// Extra cycles for read-modify-write operations (mem, reg pattern for ALU ops)
+///
+/// Intel 8088 timing:
+/// - ADD/SUB/etc mem, reg: 16+EA (reg-reg is 3, so +13)
+pub const MEMORY_RMW_EXTRA_CYCLES: u8 = 13;
+
+/// Calculate extra base cycles for memory operand variants
+///
+/// The BASE_CYCLES table stores reg-reg timing. When memory operands are involved,
+/// the Intel 8088 has different (higher) base timings. This function calculates
+/// the additional cycles to add.
+///
+/// Returns (memory_extra_cycles, is_16bit_memory_access)
+#[inline(always)]
+pub fn calculate_memory_timing(opcode: u8, dst: &Operand, src: &Operand) -> (u8, bool) {
+    let dst_is_mem = is_memory_operand(dst);
+    let src_is_mem = is_memory_operand(src);
+
+    // No memory operand - no extra cycles
+    if !dst_is_mem && !src_is_mem {
+        return (0, false);
+    }
+
+    // Determine if this is a 16-bit memory access
+    let is_16bit = match (dst.op_type, src.op_type) {
+        (OperandType::Mem16, _) => true,
+        (_, OperandType::Mem16) => true,
+        _ => false,
+    };
+
+    // Determine extra cycles based on opcode and operand pattern
+    let extra = match opcode {
+        // MOV r/m, r (0x88, 0x89) - memory destination = simple write
+        0x88 | 0x89 if dst_is_mem => MEMORY_WRITE_SIMPLE_EXTRA_CYCLES,
+
+        // MOV r, r/m (0x8A, 0x8B) - memory source = read
+        0x8A | 0x8B if src_is_mem => MEMORY_READ_EXTRA_CYCLES,
+
+        // MOV r/m16, sreg (0x8C) - memory destination = simple write
+        0x8C if dst_is_mem => MEMORY_WRITE_SIMPLE_EXTRA_CYCLES,
+
+        // MOV sreg, r/m16 (0x8E) - memory source = read
+        0x8E if src_is_mem => MEMORY_READ_EXTRA_CYCLES,
+
+        // MOV r/m, imm (0xC6, 0xC7) - memory destination = simple write
+        // Intel: 10+EA for mem,imm vs 4 for reg,imm = +6
+        0xC6 | 0xC7 if dst_is_mem => 6,
+
+        // MOV moffs instructions (0xA0-0xA3)
+        // These have their own complete timing in BASE_CYCLES (14 cycles)
+
+        // ALU operations with memory destination = read-modify-write
+        // ADD/OR/ADC/SBB/AND/SUB/XOR/CMP r/m, r
+        0x00 | 0x01 | 0x08 | 0x09 | 0x10 | 0x11 | 0x18 | 0x19 | 0x20 | 0x21 | 0x28 | 0x29
+        | 0x30 | 0x31 | 0x38 | 0x39
+            if dst_is_mem =>
+        {
+            MEMORY_RMW_EXTRA_CYCLES
+        }
+
+        // ALU operations with memory source = read
+        // ADD/OR/ADC/SBB/AND/SUB/XOR/CMP r, r/m
+        0x02 | 0x03 | 0x0A | 0x0B | 0x12 | 0x13 | 0x1A | 0x1B | 0x22 | 0x23 | 0x2A | 0x2B
+        | 0x32 | 0x33 | 0x3A | 0x3B
+            if src_is_mem =>
+        {
+            MEMORY_READ_EXTRA_CYCLES
+        }
+
+        // Group 80-83 (ALU r/m, imm) - memory destination = read-modify-write
+        // Intel: 17+EA for mem,imm vs 4 for reg,imm = +13
+        0x80 | 0x81 | 0x82 | 0x83 if dst_is_mem => MEMORY_RMW_EXTRA_CYCLES,
+
+        // TEST r/m, r (0x84, 0x85) - read-only, treat as memory read
+        0x84 | 0x85 if dst_is_mem => MEMORY_READ_EXTRA_CYCLES,
+
+        // XCHG r/m, r (0x86, 0x87) - read-modify-write
+        0x86 | 0x87 if dst_is_mem => MEMORY_RMW_EXTRA_CYCLES,
+
+        // Group FE (INC/DEC r/m8) - read-modify-write
+        0xFE if dst_is_mem => MEMORY_RMW_EXTRA_CYCLES,
+
+        // Group FF (INC/DEC/CALL/JMP/PUSH r/m16) - varies by operation
+        // For now, treat as read-modify-write for INC/DEC
+        0xFF if dst_is_mem => MEMORY_RMW_EXTRA_CYCLES,
+
+        // Shift/rotate groups (0xD0-0xD3) - read-modify-write
+        0xD0 | 0xD1 | 0xD2 | 0xD3 if dst_is_mem => MEMORY_RMW_EXTRA_CYCLES,
+
+        // Group F6/F7 (TEST/NOT/NEG/MUL/IMUL/DIV/IDIV) - memory operand
+        // These have complex timing based on operation, but base needs adjustment
+        0xF6 | 0xF7 if dst_is_mem => MEMORY_READ_EXTRA_CYCLES,
+
+        // Default: no extra cycles
+        _ => 0,
+    };
+
+    (extra, is_16bit)
+}
 
 #[cfg(test)]
 mod tests {
