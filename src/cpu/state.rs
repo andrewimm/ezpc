@@ -8,6 +8,7 @@
 //! - Cycle counters
 //! - Prefetch queue
 
+use crate::cpu::tier2::DecodeCache;
 use crate::memory::MemoryBus;
 
 /// 8088 CPU state
@@ -76,6 +77,10 @@ pub struct Cpu {
     /// CPU is halted (set by HLT instruction, cleared by interrupt)
     /// When halted, the CPU doesn't execute instructions but still checks for interrupts
     pub halted: bool,
+
+    /// Tier 2 decode cache
+    /// Caches decoded instructions to skip decoding for frequently executed code
+    pub decode_cache: DecodeCache,
 }
 
 /// Repeat prefix type for string operations
@@ -133,6 +138,7 @@ impl Cpu {
             repeat_ip: 0,
             delay_interrupt: false,
             halted: false,
+            decode_cache: DecodeCache::new(),
         }
     }
 
@@ -155,6 +161,7 @@ impl Cpu {
         self.repeat_prefix = RepeatPrefix::None;
         self.repeat_ip = 0;
         self.halted = false;
+        self.decode_cache.clear();
     }
 
     // === Register Access Methods ===
@@ -232,10 +239,18 @@ impl Cpu {
     }
 
     /// Write a byte to memory using segment:offset addressing
+    ///
+    /// Also invalidates the decode cache at this and nearby addresses to support self-modifying code.
+    /// We invalidate addresses [addr-6, addr] because an instruction up to 6 bytes before
+    /// the written address could include this byte (8088 max instruction length is ~6 bytes).
     #[inline(always)]
     pub fn write_mem8(&mut self, mem: &mut MemoryBus, segment: u16, offset: u16, value: u8) {
         let addr = Self::compute_address(segment, offset);
         mem.write_u8(addr, value);
+        // Invalidate decode cache - must invalidate any instruction that could include this byte
+        // An instruction starting up to 6 bytes before could include this byte
+        self.decode_cache
+            .invalidate_range(addr.saturating_sub(6), 7);
     }
 
     /// Read a word from memory using segment:offset addressing
@@ -246,10 +261,18 @@ impl Cpu {
     }
 
     /// Write a word to memory using segment:offset addressing
+    ///
+    /// Also invalidates the decode cache at nearby addresses to support self-modifying code.
+    /// We invalidate addresses [addr-6, addr+1] because an instruction up to 6 bytes before
+    /// the written address could include these bytes.
     #[inline(always)]
     pub fn write_mem16(&mut self, mem: &mut MemoryBus, segment: u16, offset: u16, value: u16) {
         let addr = Self::compute_address(segment, offset);
         mem.write_u16(addr, value);
+        // Invalidate decode cache - must invalidate any instruction that could include these bytes
+        // An instruction starting up to 6 bytes before could include the first written byte
+        self.decode_cache
+            .invalidate_range(addr.saturating_sub(6), 8);
     }
 
     // === Lazy Flag Evaluation ===
@@ -1007,10 +1030,11 @@ impl Cpu {
 
     // === Execution Methods ===
 
-    /// Execute one instruction (tier 1 execution)
+    /// Execute one instruction (tier 1/2 execution)
     ///
-    /// Fetches the opcode at CS:IP, decodes the instruction using tier 1
-    /// decoding, and executes it. This is the cold path - no caching.
+    /// First checks the decode cache (tier 2) for a previously decoded instruction.
+    /// On cache hit, uses the cached instruction directly, skipping decode.
+    /// On cache miss, decodes with tier 1 and caches the result for future use.
     ///
     /// Prefix bytes (segment overrides, REP) are handled by setting state
     /// in their handlers. This function loops to consume all prefixes before
@@ -1048,12 +1072,39 @@ impl Cpu {
             let had_seg_override = self.segment_override;
             let had_repeat_prefix = self.repeat_prefix;
 
-            // Fetch and execute one opcode
-            let opcode = self.read_mem8(mem, cs, self.ip);
-            self.ip = self.ip.wrapping_add(1);
+            // Compute physical address for cache lookup
+            let instr_addr = Self::compute_address(cs, self.ip);
 
-            let handler = DISPATCH_TABLE[opcode as usize];
-            let instr = self.decode_instruction_t1(mem, opcode, handler);
+            // Check decode cache first (tier 2)
+            // Skip cache if segment override is active - the override gets baked into
+            // operands at decode time, so cached instructions with/without overrides
+            // would be incompatible.
+            let instr = if self.segment_override.is_none() {
+                if let Some(entry) = self.decode_cache.get(instr_addr) {
+                    // Cache hit: use cached instruction, advance IP by instruction length
+                    let instr = entry.instruction.clone();
+                    self.ip = self.ip.wrapping_add(instr.length as u16);
+                    instr
+                } else {
+                    // Cache miss: decode with tier 1 and cache the result
+                    let opcode = self.read_mem8(mem, cs, self.ip);
+                    self.ip = self.ip.wrapping_add(1);
+
+                    let handler = DISPATCH_TABLE[opcode as usize];
+                    let instr = self.decode_instruction_t1(mem, opcode, handler);
+
+                    // Cache the decoded instruction
+                    self.decode_cache.insert(instr_addr, instr.clone());
+                    instr
+                }
+            } else {
+                // Segment override active - always use tier 1 decode, don't cache
+                let opcode = self.read_mem8(mem, cs, self.ip);
+                self.ip = self.ip.wrapping_add(1);
+
+                let handler = DISPATCH_TABLE[opcode as usize];
+                self.decode_instruction_t1(mem, opcode, handler)
+            };
 
             // Apply base cycles and EA cycles from decoded instruction
             self.current_instruction_cycles += instr.total_cycles() as u16;

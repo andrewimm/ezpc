@@ -29,7 +29,8 @@ impl CpuHarness {
 
     /// Load a program at the specified address
     ///
-    /// Sets CS:IP to point to the loaded program
+    /// Sets CS:IP to point to the loaded program.
+    /// Clears the decode cache since the loaded code may overwrite previously cached instructions.
     pub fn load_program(&mut self, code: &[u8], segment: u16) {
         // Load code into memory at segment:0
         for (i, &byte) in code.iter().enumerate() {
@@ -40,6 +41,9 @@ impl CpuHarness {
         // Set CS:IP to point to the program
         self.cpu.segments[1] = segment; // CS
         self.cpu.ip = 0;
+
+        // Clear decode cache - loaded code may overwrite previously cached instructions
+        self.cpu.decode_cache.clear();
     }
 
     /// Execute one instruction
